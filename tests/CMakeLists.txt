@@ -4,6 +4,7 @@ set(UNIT_TEST_SOURCE_LIST
     container_utils.test.cpp
     ostream_utils.test.cpp
     iterator_interface.test.cpp
+    pipe.test.cpp
 )
 
 Include(FetchContent)

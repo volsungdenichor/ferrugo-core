@@ -15,9 +15,9 @@ public:
     source_location() = default;
 
     source_location(std::string_view file_name, std::uint32_t line, std::string_view function_name)
-        : _file_name{ file_name }
-        , _line{ line }
-        , _function_name{ function_name }
+        : m_file_name{ file_name }
+        , m_line{ line }
+        , m_function_name{ function_name }
     {
     }
 
@@ -26,17 +26,17 @@ public:
 
     std::string_view file_name() const noexcept
     {
-        return _file_name;
+        return m_file_name;
     }
 
     std::string_view function_name() const noexcept
     {
-        return _function_name;
+        return m_function_name;
     }
 
     std::uint32_t line() const noexcept
     {
-        return _line;
+        return m_line;
     }
 
     friend std::ostream& operator<<(std::ostream& os, const source_location& item)
@@ -45,9 +45,9 @@ public:
     }
 
 private:
-    std::string_view _file_name;
-    std::uint32_t _line;
-    std::string_view _function_name;
+    std::string_view m_file_name;
+    std::uint32_t m_line;
+    std::string_view m_function_name;
 };
 
 }  // namespace core
