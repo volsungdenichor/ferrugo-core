@@ -56,28 +56,28 @@ struct compose_impl
 
 private:
     template <std::size_t I, class... Args>
-    auto invoke(Args&&... args) const -> decltype(std::invoke(std::get<sizeof...(Pipes) - I - 1>(m_pipes), std::forward<Args>(args)...))
+    auto invoke(Args&&... args) const -> decltype(std::invoke(std::get<I>(m_pipes), std::forward<Args>(args)...))
     {
-        return std::invoke(std::get<sizeof...(Pipes) - I - 1>(m_pipes), std::forward<Args>(args)...);
+        return std::invoke(std::get<I>(m_pipes), std::forward<Args>(args)...);
     }
 
-    template <std::size_t I, class... Args, require<(I + 1) == sizeof...(Pipes)> = 0>
-    auto call(Args&&... args) const -> decltype(invoke<I>(std::forward<Args>(args)...))
+    template <std::size_t I, class... Args, require<(I == 0)> = 0>
+    auto call(Args&&... args) const -> decltype(invoke<0>(std::forward<Args>(args)...))
     {
-        return invoke<I>(std::forward<Args>(args)...);
+        return invoke<0>(std::forward<Args>(args)...);
     }
 
-    template <std::size_t I, class... Args, require<(I + 1) < sizeof...(Pipes)> = 0>
-    auto call(Args&&... args) const -> decltype(call<I + 1>(invoke<I>(std::forward<Args>(args)...)))
+    template <std::size_t I, class... Args, require<(I > 0)> = 0>
+    auto call(Args&&... args) const -> decltype(call<I - 1>(invoke<I>(std::forward<Args>(args)...)))
     {
-        return call<I + 1>(invoke<I>(std::forward<Args>(args)...));
+        return call<I - 1>(invoke<I>(std::forward<Args>(args)...));
     }
 
 public:
     template <class... Args>
-    auto operator()(Args&&... args) const -> decltype(call<0>(std::forward<Args>(args)...))
+    auto operator()(Args&&... args) const -> decltype(call<sizeof...(Pipes) - 1>(std::forward<Args>(args)...))
     {
-        return call<0>(std::forward<Args>(args)...);
+        return call<sizeof...(Pipes) - 1>(std::forward<Args>(args)...);
     }
 };
 
