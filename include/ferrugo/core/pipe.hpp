@@ -10,11 +10,11 @@ namespace core
 {
 
 template <class... Pipes>
-struct pipeline_t
+struct pipe_t
 {
     std::tuple<Pipes...> m_pipes;
 
-    pipeline_t(std::tuple<Pipes...> pipes) : m_pipes{ std::move(pipes) }
+    pipe_t(std::tuple<Pipes...> pipes) : m_pipes{ std::move(pipes) }
     {
     }
 
@@ -46,11 +46,11 @@ public:
 };
 
 template <class... Pipes>
-struct compose_impl
+struct compose_t
 {
     std::tuple<Pipes...> m_pipes;
 
-    compose_impl(std::tuple<Pipes...> pipes) : m_pipes{ std::move(pipes) }
+    compose_t(std::tuple<Pipes...> pipes) : m_pipes{ std::move(pipes) }
     {
     }
 
@@ -90,11 +90,12 @@ struct is_pipeline : std::false_type
 };
 
 template <class... Args>
-struct is_pipeline<pipeline_t<Args...>> : std::true_type
+struct is_pipeline<pipe_t<Args...>> : std::true_type
 {
 };
 
-struct pipe_fn
+template <template <class...> class Type>
+struct function_sequence_fn
 {
 private:
     template <class Pipe>
@@ -104,44 +105,15 @@ private:
     }
 
     template <class... Pipes>
-    auto to_tuple(pipeline_t<Pipes...> pipe) const -> std::tuple<Pipes...>
+    auto to_tuple(Type<Pipes...> pipe) const -> std::tuple<Pipes...>
     {
         return pipe.m_pipes;
     }
 
     template <class... Pipes>
-    auto from_tuple(std::tuple<Pipes...> tuple) const -> pipeline_t<Pipes...>
+    auto from_tuple(std::tuple<Pipes...> tuple) const -> Type<Pipes...>
     {
-        return pipeline_t<Pipes...>{ std::move(tuple) };
-    }
-
-public:
-    template <class... Pipes>
-    auto operator()(Pipes&&... pipes) const -> decltype(from_tuple(std::tuple_cat(to_tuple(std::forward<Pipes>(pipes))...)))
-    {
-        return from_tuple(std::tuple_cat(to_tuple(std::forward<Pipes>(pipes))...));
-    }
-};
-
-struct compose_fn
-{
-public:
-    template <class Pipe>
-    auto to_tuple(Pipe pipe) const -> std::tuple<Pipe>
-    {
-        return std::tuple<Pipe>{ std::move(pipe) };
-    }
-
-    template <class... Pipes>
-    auto to_tuple(compose_impl<Pipes...> pipe) const -> std::tuple<Pipes...>
-    {
-        return pipe.m_pipes;
-    }
-
-    template <class... Pipes>
-    auto from_tuple(std::tuple<Pipes...> tuple) const -> compose_impl<Pipes...>
-    {
-        return compose_impl<Pipes...>{ std::move(tuple) };
+        return Type<Pipes...>{ std::move(tuple) };
     }
 
 public:
@@ -154,18 +126,18 @@ public:
 
 }  // namespace detail
 
-static constexpr inline auto pipe = detail::pipe_fn{};
+static constexpr inline auto pipe = detail::function_sequence_fn<pipe_t>{};
 static constexpr inline auto fn = pipe;
-static constexpr inline auto compose = detail::compose_fn{};
+static constexpr inline auto compose = detail::function_sequence_fn<compose_t>{};
 
 template <class... L, class... R>
-auto operator|=(pipeline_t<L...> lhs, pipeline_t<R...> rhs) -> decltype(pipe(std::move(lhs), std::move(rhs)))
+auto operator|=(pipe_t<L...> lhs, pipe_t<R...> rhs) -> decltype(pipe(std::move(lhs), std::move(rhs)))
 {
     return pipe(std::move(lhs), std::move(rhs));
 }
 
 template <class T, class... Pipes, require<!detail::is_pipeline<std::decay_t<T>>{}> = 0>
-auto operator|=(T&& item, const pipeline_t<Pipes...>& p) -> decltype(p(std::forward<T>(item)))
+auto operator|=(T&& item, const pipe_t<Pipes...>& p) -> decltype(p(std::forward<T>(item)))
 {
     return p(std::forward<T>(item));
 }
