@@ -1,4 +1,4 @@
-set(TARGET_NAME tests)
+set(TARGET_NAME ferrugo-core-tests)
 
 set(UNIT_TEST_SOURCE_LIST
     container_utils.test.cpp
