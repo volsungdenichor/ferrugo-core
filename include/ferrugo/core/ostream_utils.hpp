@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ferrugo/core/demangle.hpp>
+#include <ferrugo/core/type_traits.hpp>
 #include <functional>
 #include <sstream>
 #include <string_view>
@@ -52,6 +54,33 @@ struct delimit_fn
     auto operator()(Range&& range, std::string_view separator = {}) const -> impl<decltype(std::begin(range))>
     {
         return { std::begin(range), std::end(range), separator };
+    }
+};
+
+struct safe_format_fn
+{
+    template <class T>
+    struct impl
+    {
+        const T& m_value;
+
+        friend std::ostream& operator<<(std::ostream& os, const impl& item)
+        {
+            if constexpr (core::is_detected<core::has_ostream_operator, T>{})
+            {
+                return os << item.m_value;
+            }
+            else
+            {
+                return os << core::type_name<T>();
+            }
+        }
+    };
+
+    template <class T>
+    auto operator()(const T& item) const -> impl<T>
+    {
+        return impl<T>{ item };
     }
 };
 
@@ -109,6 +138,7 @@ struct ostream_applier : public std::function<void(std::ostream&)>
 
 static constexpr inline auto delimit = detail::delimit_fn{};
 static constexpr inline auto str = detail::str_fn{};
+static constexpr inline auto safe_format = detail::safe_format_fn{};
 
 }  // namespace core
 }  // namespace ferrugo
