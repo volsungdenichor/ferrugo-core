@@ -18,6 +18,10 @@ struct pipe_t
     {
     }
 
+    pipe_t(Pipes... pipes) : pipe_t{ std::tuple<Pipes...>{ std::move(pipes)... } }
+    {
+    }
+
 private:
     template <std::size_t I, class... Args>
     auto invoke(Args&&... args) const -> decltype(std::invoke(std::get<I>(m_pipes), std::forward<Args>(args)...))
