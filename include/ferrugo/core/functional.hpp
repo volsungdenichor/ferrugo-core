@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ferrugo/core/pipe.hpp>
 #include <ferrugo/core/types.hpp>
 #include <functional>
 #include <tuple>
@@ -132,9 +133,9 @@ struct apply_fn
     };
 
     template <class... Funcs>
-    auto operator()(Funcs&&... funcs) const -> impl<decltype(do_all_fn{}(std::forward<Funcs>(funcs)...))>
+    auto operator()(Funcs&&... funcs) const -> pipe_t<impl<decltype(do_all_fn{}(std::forward<Funcs>(funcs)...))>>
     {
-        return { do_all_fn{}(std::forward<Funcs>(funcs)...) };
+        return { { do_all_fn{}(std::forward<Funcs>(funcs)...) } };
     }
 };
 
@@ -154,9 +155,9 @@ struct with_fn
     };
 
     template <class... Funcs>
-    auto operator()(Funcs&&... funcs) const -> impl<decltype(do_all_fn{}(std::forward<Funcs>(funcs)...))>
+    auto operator()(Funcs&&... funcs) const -> pipe_t<impl<decltype(do_all_fn{}(std::forward<Funcs>(funcs)...))>>
     {
-        return { do_all_fn{}(std::forward<Funcs>(funcs)...) };
+        return { { do_all_fn{}(std::forward<Funcs>(funcs)...) } };
     }
 };
 
