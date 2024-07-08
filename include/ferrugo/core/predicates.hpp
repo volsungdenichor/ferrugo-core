@@ -179,9 +179,6 @@ struct compound_fn
     }
 };
 
-static constexpr inline auto any = compound_fn<any_tag, static_string<'a', 'n', 'y'>>{};
-static constexpr inline auto all = compound_fn<all_tag, static_string<'a', 'l', 'l'>>{};
-
 struct negate_fn
 {
     template <class Pred>
@@ -207,8 +204,6 @@ struct negate_fn
         return impl<std::decay_t<Pred>>{ std::forward<Pred>(pred) };
     }
 };
-
-static constexpr inline auto negate = negate_fn{};
 
 template <class Op, class Name>
 struct compare_fn
@@ -287,9 +282,6 @@ struct is_empty_fn
     }
 };
 
-static constexpr inline auto size_is = size_is_fn{};
-static constexpr inline auto is_empty = is_empty_fn{};
-
 struct each_fn
 {
     template <class Pred>
@@ -344,18 +336,16 @@ struct contains_fn
     }
 };
 
-static constexpr inline auto each = each_fn{};
-static constexpr inline auto contains = contains_fn{};
-
 }  // namespace detail
 
-using detail::all;
-using detail::any;
-using detail::contains;
-using detail::each;
-using detail::is_empty;
-using detail::negate;
-using detail::size_is;
+static constexpr inline auto any = detail::compound_fn<detail::any_tag, static_string<'a', 'n', 'y'>>{};
+static constexpr inline auto all = detail::compound_fn<detail::all_tag, static_string<'a', 'l', 'l'>>{};
+static constexpr inline auto negate = detail::negate_fn{};
+
+static constexpr inline auto each = detail::each_fn{};
+static constexpr inline auto contains = detail::contains_fn{};
+static constexpr inline auto size_is = detail::size_is_fn{};
+static constexpr inline auto is_empty = detail::is_empty_fn{};
 
 static constexpr inline auto eq = detail::compare_fn<std::equal_to<>, static_string<'e', 'q'>>{};
 static constexpr inline auto ne = detail::compare_fn<std::not_equal_to<>, static_string<'n', 'e'>>{};
