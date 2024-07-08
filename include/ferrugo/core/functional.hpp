@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ferrugo/core/types.hpp>
 #include <functional>
 #include <tuple>
 
@@ -16,6 +17,12 @@ using action_t = std::function<void(Args...)>;
 
 template <class T>
 using applier_t = action_t<T&>;
+
+template <class... Args>
+using predicate_t = std::function<bool(in_t<Args>...)>;
+
+template <class T>
+using compare_t = predicate_t<T, T>;
 
 struct identity
 {
