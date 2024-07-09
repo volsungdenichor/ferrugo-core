@@ -55,6 +55,14 @@ struct elements_are_matcher
     }
 };
 
+struct is_empty_matcher
+{
+    auto operator()() const
+    {
+        return Catch::Matchers::IsEmpty();
+    }
+};
+
 }  // namespace detail
 
 static constexpr inline auto equal_to = detail::compare_matcher<std::equal_to<>>{ "equal to" };
@@ -65,5 +73,6 @@ static constexpr inline auto less_equal = detail::compare_matcher<std::less_equa
 static constexpr inline auto greater_equal = detail::compare_matcher<std::greater_equal<>>{ "greater than or equal to" };
 
 static constexpr inline auto elements_are = detail::elements_are_matcher{};
+static constexpr inline auto is_empty = detail::is_empty_matcher{};
 
 }  // namespace matchers
