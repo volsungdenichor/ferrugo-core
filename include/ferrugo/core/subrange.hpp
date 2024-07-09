@@ -98,9 +98,72 @@ struct slice_fn
     }
 };
 
+struct reverse_fn
+{
+    template <class Iter>
+    auto operator()(subrange<Iter> item) const -> subrange<std::reverse_iterator<Iter>>
+    {
+        return { std::reverse_iterator<Iter>{ std::end(item) }, std::reverse_iterator<Iter>{ std::begin(item) } };
+    }
+
+    template <class Iter>
+    auto operator()(subrange<std::reverse_iterator<Iter>> item) const -> subrange<Iter>
+    {
+        return { std::end(item).base(), std::begin(item).base() };
+    }
+
+    template <class Range>
+    auto operator()(Range&& range) const
+    {
+        return (*this)(subrange{ std::forward<Range>(range) });
+    }
+};
+
+template <bool Before>
+struct advance_while_fn
+{
+    template <class Pred>
+    struct impl
+    {
+        Pred m_pred;
+
+        template <class Iter>
+        auto operator()(subrange<Iter> item) const -> subrange<Iter>
+        {
+            const auto b = std::begin(item);
+            const auto e = std::end(item);
+            const auto iter = std::find_if_not(b, e, std::ref(m_pred));
+
+            if constexpr (Before)
+            {
+                return { b, iter };
+            }
+            else
+            {
+                return { iter, e };
+            }
+        }
+
+        template <class Range>
+        auto operator()(Range&& range) const
+        {
+            return (*this)(subrange{ std::forward<Range>(range) });
+        }
+    };
+
+    template <class Pred>
+    auto operator()(Pred&& pred) const -> pipe_t<impl<std::decay_t<Pred>>>
+    {
+        return { { std::forward<Pred>(pred) } };
+    }
+};
+
 }  // namespace detail
 
 static constexpr inline auto slice = detail::slice_fn{};
+static constexpr inline auto reverse = pipe(detail::reverse_fn{});
+static constexpr inline auto take_while = detail::advance_while_fn<true>{};
+static constexpr inline auto drop_while = detail::advance_while_fn<false>{};
 
 }  // namespace core
 
