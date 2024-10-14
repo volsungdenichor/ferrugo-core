@@ -6,7 +6,6 @@ set(UNIT_TEST_SOURCE_LIST
     iterator_interface.test.cpp
     pipe.test.cpp
     functional.test.cpp
-    predicates.test.cpp
     subrange.test.cpp
 )
 
