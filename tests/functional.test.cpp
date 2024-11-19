@@ -32,7 +32,7 @@ TEST_CASE("apply", "[functions]")
 {
     std::string text = ".";
     REQUIRE_THAT(
-        core::apply(
+        text |= core::apply(
             [](std::string& v) { v += "abc"; },
             [](std::string& v)
             {
@@ -40,15 +40,16 @@ TEST_CASE("apply", "[functions]")
                 {
                     ch = std::toupper(ch);
                 }
-            })(text),
+            }),
         matchers::equal_to(".ABC"));
+    REQUIRE_THAT(text, matchers::equal_to(".ABC"));
 }
 
 TEST_CASE("with", "[functions]")
 {
     const std::string text = ".";
     REQUIRE_THAT(
-        core::with(
+        text |= core::with(
             [](std::string& v) { v += "abc"; },
             [](std::string& v)
             {
@@ -56,6 +57,7 @@ TEST_CASE("with", "[functions]")
                 {
                     ch = std::toupper(ch);
                 }
-            })(text),
+            }),
         matchers::equal_to(".ABC"));
+    REQUIRE_THAT(text, matchers::equal_to("."));
 }
