@@ -53,4 +53,4 @@ private:
 }  // namespace core
 }  // namespace ferrugo
 
-#define FERRUGO_SOURCE_LOCATION ::ferrugo::core::source_location(__FILE__, __LINE__, __FUNCTION__)
+#define FERRUGO_SOURCE_LOCATION ::ferrugo::core::source_location(__FILE__, __LINE__, __PRETTY_FUNCTION__)
