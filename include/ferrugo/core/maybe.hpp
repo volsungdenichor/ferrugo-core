@@ -213,9 +213,20 @@ auto transform(Self&& self, Func&& func) -> decltype(some(std::invoke(std::forwa
 }
 
 template <class Self, class Func>
-auto or_else(Self&& self, Func&& func) -> decltype(std::invoke(std::forward<Func>(func)))
+auto or_else(Self&& self, Func&& func) -> std::decay_t<Self>
 {
-    return self ? std::forward<Self>(self) : std::invoke(std::forward<Func>(func));
+    if constexpr (std::is_void_v<std::invoke_result_t<Func>>)
+    {
+        if (!self)
+        {
+            std::invoke(std::forward<Func>(func));
+        }
+        return std::forward<Self>(self);
+    }
+    else
+    {
+        return self ? std::forward<Self>(self) : std::invoke(std::forward<Func>(func));
+    }
 }
 
 template <class Self, class U>
@@ -247,6 +258,8 @@ struct maybe : maybe_base<T>
         return this->has_value();
     }
 
+    // ---
+
     template <class Pred>
     auto filter(Pred&& pred) const& -> decltype(impl::filter(*this, std::forward<Pred>(pred)))
     {
@@ -258,6 +271,8 @@ struct maybe : maybe_base<T>
     {
         return impl::filter(std::move(*this), std::forward<Pred>(pred));
     }
+
+    // ---
 
     template <class Func>
     auto and_then(Func&& func) const& -> decltype(impl::and_then(*this, std::forward<Func>(func)))
@@ -271,6 +286,8 @@ struct maybe : maybe_base<T>
         return impl::and_then(std::move(*this), std::forward<Func>(func));
     }
 
+    // ---
+
     template <class Func>
     auto transform(Func&& func) const& -> decltype(impl::transform(*this, std::forward<Func>(func)))
     {
@@ -282,6 +299,8 @@ struct maybe : maybe_base<T>
     {
         return impl::transform(std::move(*this), std::forward<Func>(func));
     }
+
+    // ---
 
     template <class Func>
     auto or_else(Func&& func) const& -> decltype(impl::or_else(*this, std::forward<Func>(func)))
@@ -295,6 +314,8 @@ struct maybe : maybe_base<T>
         return impl::or_else(std::move(*this), std::forward<Func>(func));
     }
 
+    // ---
+
     template <class U>
     auto value_or(U&& default_value) const& -> decltype(impl::value_or(*this, std::forward<U>(default_value)))
     {
@@ -306,12 +327,49 @@ struct maybe : maybe_base<T>
     {
         return impl::value_or(std::move(*this), std::forward<U>(default_value));
     }
-
-    friend std::ostream& operator<<(std::ostream& os, const maybe& item)
-    {
-        return item ? os << "some{" << *item << "}" : os << "none";
-    }
 };
+
+template <class T>
+std::ostream& operator<<(std::ostream& os, const maybe<T>& item)
+{
+    return item ? os << "some{" << *item << "}" : os << "none";
+}
+
+template <class L, class R>
+bool operator==(const maybe<L>& lhs, const maybe<R>& rhs)
+{
+    return (!lhs && !rhs) || (lhs && rhs && *lhs == *rhs);
+}
+
+template <class L, class R>
+bool operator==(const maybe<L>& lhs, const R& rhs)
+{
+    return lhs && *lhs == rhs;
+}
+
+template <class L, class R>
+bool operator==(const L& lhs, const maybe<R>& rhs)
+{
+    return rhs == lhs;
+}
+
+template <class L, class R>
+bool operator!=(const maybe<L>& lhs, const maybe<R>& rhs)
+{
+    return !(lhs == rhs);
+}
+
+template <class L, class R>
+bool operator!=(const maybe<L>& lhs, const R& rhs)
+{
+    return !(lhs == rhs);
+}
+
+template <class L, class R>
+bool operator!=(const L& lhs, const maybe<R>& rhs)
+{
+    return !(lhs == rhs);
+}
 
 }  // namespace core
 }  // namespace ferrugo
