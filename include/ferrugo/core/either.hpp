@@ -193,40 +193,44 @@ struct either_storage : either_storage_base<L, R>
         new (&this->m_right) R(std::forward<Args>(args)...);
         this->m_is_left = false;
     }
-};
 
-template <class L, class R>
-void swap(either_storage<L, R>& lhs, either_storage<L, R>& rhs)
-{
-    if (lhs.is_left() && rhs.is_left())
+    static void swap(either_storage& lhs, either_storage& rhs)
     {
-        L lhs_val = std::move(lhs).get_left();
-        L rhs_val = std::move(rhs).get_left();
-        lhs.construct(in_place_left, std::move(rhs_val));
-        rhs.construct(in_place_left, std::move(lhs_val));
+        if (lhs.is_left() && rhs.is_left())
+        {
+            L lhs_val = std::move(lhs).get_left();
+            L rhs_val = std::move(rhs).get_left();
+            lhs.construct(in_place_left, std::move(rhs_val));
+            rhs.construct(in_place_left, std::move(lhs_val));
+        }
+        else if (lhs.is_right() && rhs.is_right())
+        {
+            R lhs_val = std::move(lhs).get_right();
+            R rhs_val = std::move(rhs).get_right();
+            lhs.construct(in_place_right, std::move(rhs_val));
+            rhs.construct(in_place_right, std::move(lhs_val));
+        }
+        else if (lhs.is_left() && rhs.is_right())
+        {
+            L lhs_val = std::move(lhs).get_left();
+            R rhs_val = std::move(rhs).get_right();
+            lhs.construct(in_place_right, std::move(rhs_val));
+            rhs.construct(in_place_left, std::move(lhs_val));
+        }
+        else if (lhs.is_right() && rhs.is_left())
+        {
+            R lhs_val = std::move(lhs).get_right();
+            L rhs_val = std::move(rhs).get_left();
+            lhs.construct(in_place_left, std::move(rhs_val));
+            rhs.construct(in_place_right, std::move(lhs_val));
+        }
     }
-    else if (lhs.is_right() && rhs.is_right())
+
+    void swap(either_storage& other)
     {
-        R lhs_val = std::move(lhs).get_right();
-        R rhs_val = std::move(rhs).get_right();
-        lhs.construct(in_place_right, std::move(rhs_val));
-        rhs.construct(in_place_right, std::move(lhs_val));
+        swap(*this, other);
     }
-    else if (lhs.is_left() && rhs.is_right())
-    {
-        L lhs_val = std::move(lhs).get_left();
-        R rhs_val = std::move(rhs).get_right();
-        lhs.construct(in_place_right, std::move(rhs_val));
-        rhs.construct(in_place_left, std::move(lhs_val));
-    }
-    else if (lhs.is_right() && rhs.is_left())
-    {
-        R lhs_val = std::move(lhs).get_right();
-        L rhs_val = std::move(rhs).get_left();
-        lhs.construct(in_place_left, std::move(rhs_val));
-        rhs.construct(in_place_right, std::move(lhs_val));
-    }
-}
+};
 
 template <class L, class R>
 class either
@@ -296,7 +300,7 @@ public:
 
     void swap(either& other)
     {
-        ferrugo::core::swap(m_storage, other.m_storage);
+        m_storage.swap(other.m_storage);
     }
 
     constexpr bool is_left() const noexcept
