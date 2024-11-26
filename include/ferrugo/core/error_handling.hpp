@@ -46,7 +46,7 @@ void raise(Args&&... args)
 }
 
 template <class E = assertion_error, class... Args>
-void assert(bool condition, Args&&... args)
+void ensure(bool condition, Args&&... args)
 {
     if (!condition)
     {
