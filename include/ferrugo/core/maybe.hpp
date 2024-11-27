@@ -14,6 +14,8 @@ struct none_t
 {
 };
 
+inline constexpr none_t none = {};
+
 namespace detail
 {
 
@@ -59,7 +61,7 @@ struct maybe_base
 
     void reset()
     {
-        m_storage.emplace_left();
+        m_storage.emplace_left(none);
     }
 
     template <class... Args>

@@ -95,8 +95,6 @@ struct either_storage_base<
 template <class L, class R>
 struct either_storage : either_storage_base<L, R>
 {
-    static_assert(std::is_default_constructible_v<L>, "default constructible left type required");
-
     using base_t = either_storage_base<L, R>;
 
     using base_t::base_t;
@@ -252,6 +250,7 @@ public:
 
     either() : either(in_place_left)
     {
+        static_assert(std::is_default_constructible_v<L>, "default constructible left type required");
     }
 
     either(const either& other) : either()
