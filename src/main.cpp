@@ -202,16 +202,13 @@ void run()
 {
     using namespace ferrugo::core;
     maybe<std::tuple<const int, const int>> a = std::make_tuple(22, 333);
-    const auto b = a.transform([](const auto& v) { return std::get<0>(v) + std::get<1>(v); })
-                       .filter([](int x) { return x < 0; })
-                       .transform(str);
-    std::cout << debug(b) << "\n";
-
-    int x = 10;
-    maybe<const int&> ref = x;
-    ref = val<100>();
-    std::cout << debug(ref) << "\n";
-    std::cout << x << "\n";
+    std::cout << debug(a) << "\n";
+    a.emplace(std::pair{ 99, -99 });
+    std::cout << debug(a) << "\n";
+    a.reset();
+    std::cout << debug(a) << "\n";
+    a = std::pair(9, 9);
+    std::cout << debug(a) << "\n";
 }
 
 int main()

@@ -10,10 +10,6 @@ namespace ferrugo
 namespace core
 {
 
-struct in_place_t
-{
-};
-
 struct none_t
 {
 };
@@ -43,7 +39,7 @@ struct maybe_base
     {
         if (other.has_value())
         {
-            m_storage.construct(in_place_right, *other);
+            emplace(*other);
         }
     }
 
@@ -52,8 +48,24 @@ struct maybe_base
     {
         if (other.has_value())
         {
-            m_storage.construct(in_place_right, *std::move(other));
+            emplace(*std::move(other));
         }
+    }
+
+    void swap(maybe_base& other)
+    {
+        m_storage.swap(other.m_storage);
+    }
+
+    void reset()
+    {
+        m_storage.emplace_left();
+    }
+
+    template <class... Args>
+    void emplace(Args&&... args)
+    {
+        m_storage.emplace_right(std::forward<Args>(args)...);
     }
 
     bool has_value() const
@@ -95,16 +107,6 @@ struct maybe_base
         return &**this;
     }
 
-    void swap(maybe_base& other)
-    {
-        m_storage.swap(other.m_storage);
-    }
-
-    void reset()
-    {
-        m_storage.construct(in_place_left);
-    }
-
 private:
     void ensure_has_value() const
     {
@@ -121,7 +123,7 @@ struct maybe_base<T&>
     using storage_type = T*;
     storage_type m_storage;
 
-    maybe_base() : m_storage()
+    maybe_base() : m_storage(nullptr)
     {
     }
 
@@ -131,6 +133,16 @@ struct maybe_base<T&>
 
     maybe_base(const maybe_base& other) : m_storage(other.m_value)
     {
+    }
+
+    void swap(maybe_base& other)
+    {
+        std::swap(m_storage, other.m_storage);
+    }
+
+    void reset()
+    {
+        m_storage = nullptr;
     }
 
     bool has_value() const
@@ -147,11 +159,6 @@ struct maybe_base<T&>
     T* operator->() const
     {
         return &**this;
-    }
-
-    void swap(maybe_base& other)
-    {
-        std::swap(m_storage, other.m_storage);
     }
 
 private:
@@ -350,7 +357,7 @@ struct maybe : detail::maybe_base<T>
 template <class T>
 std::ostream& operator<<(std::ostream& os, const maybe<T>& item)
 {
-    return item ? os << "some{" << *item << "}" : os << "none";
+    return item ? os << "some[ " << *item << " ]" : os << "none";
 }
 
 template <class L, class R>
@@ -371,6 +378,23 @@ bool operator==(const L& lhs, const maybe<R>& rhs)
     return rhs == lhs;
 }
 
+template <class L>
+bool operator==(const maybe<L>& lhs, none_t)
+{
+    return !static_cast<bool>(lhs);
+}
+
+template <class R>
+bool operator==(none_t, const maybe<R>& rhs)
+{
+    return !static_cast<bool>(rhs);
+}
+
+inline bool operator==(none_t, none_t)
+{
+    return true;
+}
+
 template <class L, class R>
 bool operator!=(const maybe<L>& lhs, const maybe<R>& rhs)
 {
@@ -387,6 +411,23 @@ template <class L, class R>
 bool operator!=(const L& lhs, const maybe<R>& rhs)
 {
     return !(lhs == rhs);
+}
+
+template <class L>
+bool operator!=(const maybe<L>& lhs, none_t)
+{
+    return static_cast<bool>(lhs);
+}
+
+template <class R>
+bool operator!=(none_t, const maybe<R>& rhs)
+{
+    return static_cast<bool>(rhs);
+}
+
+inline bool operator!=(none_t, none_t)
+{
+    return false;
 }
 
 }  // namespace core

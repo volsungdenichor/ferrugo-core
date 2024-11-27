@@ -175,11 +175,11 @@ struct either_storage : either_storage_base<L, R>
 
     void reset()
     {
-        construct(in_place_left);
+        emplace_left();
     }
 
     template <class... Args>
-    void construct(in_place_left_t, Args&&... args)
+    void emplace_left(Args&&... args)
     {
         destroy();
         new (&this->m_left) L(std::forward<Args>(args)...);
@@ -187,7 +187,7 @@ struct either_storage : either_storage_base<L, R>
     }
 
     template <class... Args>
-    void construct(in_place_right_t, Args&&... args)
+    void emplace_right(Args&&... args)
     {
         destroy();
         new (&this->m_right) R(std::forward<Args>(args)...);
@@ -200,29 +200,29 @@ struct either_storage : either_storage_base<L, R>
         {
             L lhs_val = std::move(lhs).get_left();
             L rhs_val = std::move(rhs).get_left();
-            lhs.construct(in_place_left, std::move(rhs_val));
-            rhs.construct(in_place_left, std::move(lhs_val));
+            lhs.emplace_left(std::move(rhs_val));
+            rhs.emplace_left(std::move(lhs_val));
         }
         else if (lhs.is_right() && rhs.is_right())
         {
             R lhs_val = std::move(lhs).get_right();
             R rhs_val = std::move(rhs).get_right();
-            lhs.construct(in_place_right, std::move(rhs_val));
-            rhs.construct(in_place_right, std::move(lhs_val));
+            lhs.emplace_right(std::move(rhs_val));
+            rhs.emplace_right(std::move(lhs_val));
         }
         else if (lhs.is_left() && rhs.is_right())
         {
             L lhs_val = std::move(lhs).get_left();
             R rhs_val = std::move(rhs).get_right();
-            lhs.construct(in_place_right, std::move(rhs_val));
-            rhs.construct(in_place_left, std::move(lhs_val));
+            lhs.emplace_right(std::move(rhs_val));
+            rhs.emplace_left(std::move(lhs_val));
         }
         else if (lhs.is_right() && rhs.is_left())
         {
             R lhs_val = std::move(lhs).get_right();
             L rhs_val = std::move(rhs).get_left();
-            lhs.construct(in_place_left, std::move(rhs_val));
-            rhs.construct(in_place_right, std::move(lhs_val));
+            lhs.emplace_left(std::move(rhs_val));
+            rhs.emplace_right(std::move(lhs_val));
         }
     }
 
@@ -258,11 +258,11 @@ public:
     {
         if (other.is_left())
         {
-            m_storage.construct(in_place_left, other.get_left());
+            m_storage.emplace_left(other.get_left());
         }
         else
         {
-            m_storage.construct(in_place_right, other.get_right());
+            m_storage.emplace_right(other.get_right());
         }
     }
 
@@ -270,11 +270,11 @@ public:
     {
         if (other.is_left())
         {
-            m_storage.construct(in_place_left, std::move(other).get_left());
+            m_storage.emplace_left(std::move(other).get_left());
         }
         else
         {
-            m_storage.construct(in_place_right, std::move(other).get_right());
+            m_storage.emplace_right(std::move(other).get_right());
         }
     }
 
@@ -287,15 +287,15 @@ public:
     }
 
     template <class... Args>
-    void emplace(in_place_left_t, Args&&... args)
+    void emplace_left(Args&&... args)
     {
-        m_storage.construct(in_place_left, std::forward<Args>(args)...);
+        m_storage.emplace_left(std::forward<Args>(args)...);
     }
 
     template <class... Args>
-    void emplace(in_place_right_t, Args&&... args)
+    void emplace_right(Args&&... args)
     {
-        m_storage.construct(in_place_right, std::forward<Args>(args)...);
+        m_storage.emplace_right(std::forward<Args>(args)...);
     }
 
     void swap(either& other)
