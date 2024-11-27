@@ -1,10 +1,20 @@
 #include <algorithm>
 #include <array>
+#include <boost/variant.hpp>
 #include <cmath>
+#include <ferrugo/core/either.hpp>
+#include <ferrugo/core/error_handling.hpp>
+#include <ferrugo/core/maybe.hpp>
+#include <ferrugo/core/ostream_utils.hpp>
+#include <ferrugo/core/source_location.hpp>
+#include <ferrugo/core/std_ostream.hpp>
+#include <ferrugo/core/str_t.hpp>
 #include <functional>
 #include <iostream>
 #include <optional>
 #include <random>
+#include <sstream>
+#include <variant>
 #include <vector>
 
 using seed_t = std::random_device::result_type;
@@ -177,9 +187,47 @@ public:
     settings_t m_settings;
 };
 
+struct monostate
+{
+};
+
+template <int V>
+const int& val()
+{
+    static const int val = V;
+    return val;
+}
+
+void run()
+{
+    using namespace ferrugo::core;
+    maybe<std::tuple<const int, const int>> a = std::make_tuple(22, 333);
+    const auto b = a.transform([](const auto& v) { return std::get<0>(v) + std::get<1>(v); })
+                       .filter([](int x) { return x < 0; })
+                       .transform(str);
+    std::cout << debug(b) << "\n";
+
+    int x = 10;
+    maybe<const int&> ref = x;
+    ref = val<100>();
+    std::cout << debug(ref) << "\n";
+    std::cout << x << "\n";
+}
+
 int main()
 {
-    const perlin_noise perlin{ { 4, 0.2F, 0.1F }, permutation_t{ seed_t{ 10 } } };
-    std::cout << perlin(std::array<float, 3>{ { 0.F, 0.20F, 0.F } }) << std::endl;
-    std::cout << perlin(std::array<float, 3>{ { 0.F, 0.21F, 0.F } }) << std::endl;
+    // const perlin_noise perlin{ { 4, 0.2F, 0.1F }, permutation_t{ seed_t{ 10 } } };
+    // std::cout << perlin(std::array<float, 3>{ { 0.F, 0.20F, 0.F } }) << std::endl;
+    // std::cout << perlin(std::array<float, 3>{ { 0.F, 0.21F, 0.F } }) << std::endl;
+    try
+    {
+        run();
+    }
+    catch (...)
+    {
+        std::cerr << "\n"
+                  << "Error:"
+                  << "\n"
+                  << ferrugo::core::exception_proxy{};
+    }
 }

@@ -66,7 +66,7 @@ struct safe_format_fn
 
         friend std::ostream& operator<<(std::ostream& os, const impl& item)
         {
-            if constexpr (core::is_detected<core::has_ostream_operator, T>{})
+            if constexpr (core::has_ostream_operator<T>::value)
             {
                 return os << item.m_value;
             }
@@ -74,6 +74,36 @@ struct safe_format_fn
             {
                 return os << core::type_name<T>();
             }
+        }
+    };
+
+    template <class T>
+    auto operator()(const T& item) const -> impl<T>
+    {
+        return impl<T>{ item };
+    }
+};
+
+struct debug_fn
+{
+    template <class T>
+    struct impl
+    {
+        const T& m_value;
+
+        friend std::ostream& operator<<(std::ostream& os, const impl& item)
+        {
+            os << core::type_name<T>() << "[ ";
+            if constexpr (core::has_ostream_operator<T>::value)
+            {
+                os << item.m_value;
+            }
+            else
+            {
+                os << "<unknown>";
+            }
+            os << " ]";
+            return os;
         }
     };
 
@@ -139,6 +169,7 @@ struct ostream_applier : public std::function<void(std::ostream&)>
 static constexpr inline auto delimit = detail::delimit_fn{};
 static constexpr inline auto str = detail::str_fn{};
 static constexpr inline auto safe_format = detail::safe_format_fn{};
+static constexpr inline auto debug = detail::debug_fn{};
 
 }  // namespace core
 }  // namespace ferrugo

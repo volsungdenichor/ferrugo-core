@@ -18,6 +18,9 @@ struct none_t
 {
 };
 
+namespace detail
+{
+
 template <class T>
 struct maybe_base
 {
@@ -115,29 +118,30 @@ private:
 template <class T>
 struct maybe_base<T&>
 {
-    T* m_value;
+    using storage_type = T*;
+    storage_type m_storage;
 
-    maybe_base() : m_value()
+    maybe_base() : m_storage()
     {
     }
 
-    maybe_base(T& value) : m_value(&value)
+    maybe_base(T& value) : m_storage(&value)
     {
     }
 
-    maybe_base(const maybe_base& other) : m_value(other.m_value)
+    maybe_base(const maybe_base& other) : m_storage(other.m_value)
     {
     }
 
     bool has_value() const
     {
-        return m_value;
+        return m_storage;
     }
 
     T& operator*() const
     {
         ensure_has_value();
-        return *m_value;
+        return *m_storage;
     }
 
     T* operator->() const
@@ -147,7 +151,7 @@ struct maybe_base<T&>
 
     void swap(maybe_base& other)
     {
-        std::swap(m_value, other.m_value);
+        std::swap(m_storage, other.m_storage);
     }
 
 private:
@@ -160,6 +164,8 @@ private:
     }
 };
 
+}  // namespace detail
+
 template <class T>
 struct maybe;
 
@@ -171,6 +177,18 @@ struct is_maybe : std::false_type
 template <class T>
 struct is_maybe<maybe<T>> : std::true_type
 {
+};
+
+template <class T>
+struct maybe_underlying_type;
+
+template <class T>
+using maybe_underlying_type_t = typename maybe_underlying_type<T>::type;
+
+template <class T>
+struct maybe_underlying_type<maybe<T>>
+{
+    using type = T;
 };
 
 namespace impl
@@ -238,9 +256,9 @@ auto value_or(Self&& self, U&& default_value) -> std::decay_t<U>
 }  // namespace impl
 
 template <class T>
-struct maybe : maybe_base<T>
+struct maybe : detail::maybe_base<T>
 {
-    using base_t = maybe_base<T>;
+    using base_t = detail::maybe_base<T>;
     using base_t::base_t;
 
     maybe(none_t) : maybe()

@@ -134,7 +134,12 @@ struct is_random_access_range : is_random_access_iterator<iterator_t<T>>
 };
 
 template <class T>
-using has_ostream_operator = decltype(std::declval<std::ostream>() << std::declval<T>());
+using has_ostream_operator_impl = decltype(std::declval<std::ostream>() << std::declval<T>());
+
+template <class T>
+struct has_ostream_operator : is_detected<has_ostream_operator_impl, T>
+{
+};
 
 template <bool C>
 using require = std::enable_if_t<C, int>;
