@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ferrugo/core/either.hpp>
+#include <ferrugo/core/error_handling.hpp>
 #include <functional>
 #include <iostream>
 #include <type_traits>
@@ -15,6 +16,17 @@ struct none_t
 };
 
 inline constexpr none_t none = {};
+
+struct bad_maybe_access : std::runtime_error
+{
+    bad_maybe_access() : std::runtime_error("bad maybe access")
+    {
+    }
+
+    bad_maybe_access(const std::string& msg) : std::runtime_error(msg)
+    {
+    }
+};
 
 namespace detail
 {
@@ -75,28 +87,52 @@ struct maybe_base
         return m_storage.is_right();
     }
 
+    template <class E = bad_maybe_access, class... Args>
+    const value_type& value(Args&&... args) const&
+    {
+        ensure<E>(has_value(), std::forward<Args>(args)...);
+        return m_storage.get_right();
+    }
+
+    template <class E = bad_maybe_access, class... Args>
+    value_type& value(Args&&... args) &
+    {
+        ensure<E>(has_value(), std::forward<Args>(args)...);
+        return m_storage.get_right();
+    }
+
+    template <class E = bad_maybe_access, class... Args>
+    value_type&& value(Args&&... args) &&
+    {
+        ensure<E>(has_value(), std::forward<Args>(args)...);
+        return std::move(m_storage).get_right();
+    }
+
+    template <class E = bad_maybe_access, class... Args>
+    const value_type&& value(Args&&... args) const&&
+    {
+        ensure<E>(has_value(), std::forward<Args>(args)...);
+        return std::move(m_storage).get_right();
+    }
+
     const value_type& operator*() const&
     {
-        ensure_has_value();
-        return m_storage.get_right();
+        return (*this).value();
     }
 
     value_type& operator*() &
     {
-        ensure_has_value();
-        return m_storage.get_right();
+        return (*this).value();
     }
 
     value_type&& operator*() &&
     {
-        ensure_has_value();
-        return std::move(m_storage).get_right();
+        return std::move(*this).value();
     }
 
     const value_type&& operator*() const&&
     {
-        ensure_has_value();
-        return std::move(m_storage).get_right();
+        return std::move(*this).value();
     }
 
     const value_type* operator->() const&
@@ -107,15 +143,6 @@ struct maybe_base
     value_type* operator->() &
     {
         return &**this;
-    }
-
-private:
-    void ensure_has_value() const
-    {
-        if (!has_value())
-        {
-            throw std::runtime_error{ "maybe: missing value" };
-        }
     }
 };
 
@@ -152,24 +179,21 @@ struct maybe_base<T&>
         return m_storage;
     }
 
+    template <class E = bad_maybe_access, class... Args>
+    T& value(Args&&... args) const
+    {
+        ensure<E>(has_value(), std::forward<Args>(args)...);
+        return *m_storage;
+    }
+
     T& operator*() const
     {
-        ensure_has_value();
-        return *m_storage;
+        return (*this).value();
     }
 
     T* operator->() const
     {
         return &**this;
-    }
-
-private:
-    void ensure_has_value() const
-    {
-        if (!has_value())
-        {
-            throw std::runtime_error{ "maybe: missing value" };
-        }
     }
 };
 
@@ -359,7 +383,7 @@ struct maybe : detail::maybe_base<T>
 template <class T>
 std::ostream& operator<<(std::ostream& os, const maybe<T>& item)
 {
-    return item ? os << "some[ " << *item << " ]" : os << "none";
+    return item ? os << "some(" << *item << ")" : os << "none";
 }
 
 template <class L, class R>
