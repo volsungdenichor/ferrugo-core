@@ -43,6 +43,14 @@ struct maybe_base
     {
     }
 
+    maybe_base(const T& value) : m_storage(in_place_right, value)
+    {
+    }
+
+    maybe_base(T&& value) : m_storage(in_place_right, std::move(value))
+    {
+    }
+
     template <class U, class = std::enable_if_t<std::is_constructible_v<T, U>>>
     maybe_base(U&& value) : m_storage(in_place_right, std::forward<U>(value))
     {
@@ -59,6 +67,22 @@ struct maybe_base
 
     template <class U, class = std::enable_if_t<std::is_constructible_v<T, U>>>
     maybe_base(maybe_base<U>&& other) : maybe_base()
+    {
+        if (other.has_value())
+        {
+            emplace(*std::move(other));
+        }
+    }
+
+    maybe_base(const maybe_base& other) : maybe_base()
+    {
+        if (other.has_value())
+        {
+            emplace(*other);
+        }
+    }
+
+    maybe_base(maybe_base&& other) : maybe_base()
     {
         if (other.has_value())
         {
