@@ -28,15 +28,11 @@
 
 void run()
 {
-    std::vector<int> v = { 1, 2, 3, 4 };
+    std::vector<int> v = { 1, 2, 3, 4, 42, 100 };
     using namespace ferrugo::core;
-    const auto seq = view(v)
-                         .inspect([](int x) { std::cout << "> " << x << "\n"; })
-                         .filter(L(it % 2 == 0))
-                         .transform(L(std::to_string(it)))
-                         .transform(L("_" + it + "_"));
+    const auto seq = vec('^') + view(v).transform(L(std::to_string(it))).transform(owning).join() + vec('$');
 
-    for (const std::string& item : seq)
+    for (const auto& item : seq)
     {
         std::cout << item << "\n";
     }

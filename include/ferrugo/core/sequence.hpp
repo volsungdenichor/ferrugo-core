@@ -607,6 +607,59 @@ struct step_mixin
 };
 
 template <class T>
+struct join_mixin
+{
+};
+
+template <class T>
+struct join_mixin<sequence<T>>
+{
+    struct next_function
+    {
+        next_function_t<sequence<T>> m_next;
+        mutable next_function_t<T> m_sub = {};
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            while (true)
+            {
+                if (!m_sub)
+                {
+                    iteration_result_t<sequence<T>> next = m_next();
+                    if (!next)
+                    {
+                        return {};
+                    }
+                    m_sub = next->get_next_function();
+                    continue;
+                }
+                iteration_result_t<T> next_sub = m_sub();
+                if (next_sub)
+                {
+                    return next_sub;
+                }
+                else
+                {
+                    m_sub = {};
+                    continue;
+                }
+            }
+            return {};
+        }
+    };
+
+    auto join() const& -> sequence<T>
+    {
+        return sequence<T>{ next_function{ static_cast<const sequence<sequence<T>>&>(*this).get_next_function() } };
+    }
+
+    auto join() && -> sequence<T>
+    {
+        return sequence<T>{ next_function{ static_cast<sequence<sequence<T>>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
 struct empty_sequence
 {
     auto operator()() const -> iteration_result_t<T>
@@ -731,7 +784,8 @@ struct sequence : inspect_mixin<T>,
                   take_while_indexed_mixin<T>,
                   drop_mixin<T>,
                   take_mixin<T>,
-                  step_mixin<T>
+                  step_mixin<T>,
+                  join_mixin<T>
 {
     using iterator = sequence_iterator<T>;
     using next_function_type = typename iterator::next_function_type;
@@ -746,7 +800,12 @@ struct sequence : inspect_mixin<T>,
     }
 
     template <class U, std::enable_if_t<std::is_constructible_v<T, U>, int> = 0>
-    sequence(const sequence<U>& other) : sequence(cast_sequence<T, U>{ other.get_next() })
+    sequence(const sequence<U>& other) : sequence(cast_sequence<T, U>{ other.get_next_function() })
+    {
+    }
+
+    template <class U, std::enable_if_t<std::is_constructible_v<T, U>, int> = 0>
+    sequence(sequence<U>&& other) : sequence(cast_sequence<T, U>{ std::move(other).get_next_function() })
     {
     }
 
@@ -890,7 +949,7 @@ struct view_fn
     };
 
     template <class Range, class Out = range_reference_t<Range>>
-    auto operator()(Range& range) const -> sequence<Out>
+    auto operator()(Range&& range) const -> sequence<Out>
     {
         return sequence<Out>{ next_function<iterator_t<Range>, Out>{ std::begin(range), std::end(range) } };
     }
@@ -902,12 +961,272 @@ struct view_fn
     }
 };
 
+struct owning_fn
+{
+    template <class Range, class Iter, class Out>
+    struct next_function
+    {
+        std::shared_ptr<Range> m_range;
+        mutable Iter m_iter;
+
+        next_function(std::shared_ptr<Range> range) : m_range(range), m_iter(std::begin(*m_range))
+        {
+        }
+
+        auto operator()() const -> maybe<Out>
+        {
+            if (m_iter == std::end(*m_range))
+            {
+                return {};
+            }
+            return *m_iter++;
+        }
+    };
+
+    template <class Range, class Out = range_reference_t<Range>>
+    auto operator()(Range range) const -> sequence<Out>
+    {
+        return sequence<Out>{ next_function<Range, iterator_t<Range>, Out>{ std::make_shared<Range>(std::move(range)) } };
+    }
+
+    template <class T>
+    auto operator()(const sequence<T>& s) const -> sequence<T>
+    {
+        return s;
+    }
+};
+
+struct single_fn
+{
+    template <class T>
+    struct next_function
+    {
+        T m_value;
+        mutable bool m_init = true;
+
+        auto operator()() const -> iteration_result_t<const T&>
+        {
+            if (m_init)
+            {
+                m_init = false;
+                return m_value;
+            }
+            return {};
+        }
+    };
+
+    template <class T>
+    auto operator()(T value) const -> sequence<const T&>
+    {
+        return sequence<const T&>{ next_function<T>{ std::move(value) } };
+    }
+};
+
+struct repeat_fn
+{
+    template <class T>
+    struct next_function
+    {
+        T m_value;
+
+        auto operator()() const -> iteration_result_t<const T&>
+        {
+            return m_value;
+        }
+    };
+
+    template <class T>
+    auto operator()(T value) const -> sequence<const T&>
+    {
+        return sequence<const T&>{ next_function<T>{ std::move(value) } };
+    }
+};
+
+struct concat_fn
+{
+    template <class T>
+    struct next_function
+    {
+        next_function_t<T> m_first;
+        next_function_t<T> m_second;
+        mutable bool m_first_finished = false;
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            if (!m_first_finished)
+            {
+                iteration_result_t<T> n = m_first();
+                if (n)
+                {
+                    return n;
+                }
+                else
+                {
+                    m_first_finished = true;
+                }
+            }
+            return m_second();
+        }
+    };
+
+    template <class T0, class T1, class T2, class T3, class Out = std::common_type_t<T0, T1, T2, T3>>
+    auto operator()(  //
+        const sequence<T0>& s0,
+        const sequence<T1>& s1,
+        const sequence<T2>& s2,
+        const sequence<T3>& s3) const -> sequence<Out>
+    {
+        return (*this)((*this)((*this)(s0, s1), s2), s3);
+    }
+
+    template <class T0, class T1, class T2, class Out = std::common_type_t<T0, T1, T2>>
+    auto operator()(  //
+        const sequence<T0>& s0,
+        const sequence<T1>& s1,
+        const sequence<T2>& s2) const -> sequence<Out>
+    {
+        return (*this)((*this)(s0, s1), s2);
+    }
+
+    template <class T0, class T1, class Out = std::common_type_t<T0, T1>>
+    auto operator()(  //
+        const sequence<T0>& s0,
+        const sequence<T1>& s1) const -> sequence<Out>
+    {
+        return (*this)(sequence<Out>{ s0 }, sequence<Out>{ s1 });
+    }
+
+    template <class T>
+    auto operator()(  //
+        const sequence<T>& lhs,
+        const sequence<T>& rhs) const -> sequence<T>
+    {
+        return sequence<T>{ next_function<T>{ lhs.get_next_function(), rhs.get_next_function() } };
+    }
+};
+
+struct zip_fn
+{
+    template <class In0, class In1 = void, class In2 = void, class In3 = void>
+    struct next_function;
+
+    template <class In0, class In1, class In2, class In3>
+    struct next_function
+    {
+        next_function_t<In0> m_next0;
+        next_function_t<In1> m_next1;
+        next_function_t<In2> m_next2;
+        next_function_t<In3> m_next3;
+
+        auto operator()() const -> iteration_result_t<std::tuple<In0, In1, In2, In3>>
+        {
+            iteration_result_t<In0> n0 = m_next0();
+            iteration_result_t<In1> n1 = m_next1();
+            iteration_result_t<In2> n2 = m_next2();
+            iteration_result_t<In3> n3 = m_next3();
+            if (n0 && n1 && n2 && n3)
+            {
+                return std::tuple<In0, In1, In2, In3>{ *n0, *n1, *n2, *n3 };
+            }
+            return {};
+        }
+    };
+
+    template <class In0, class In1, class In2>
+    struct next_function<In0, In1, In2, void>
+    {
+        next_function_t<In0> m_next0;
+        next_function_t<In1> m_next1;
+        next_function_t<In2> m_next2;
+
+        auto operator()() const -> iteration_result_t<std::tuple<In0, In1, In2>>
+        {
+            iteration_result_t<In0> n0 = m_next0();
+            iteration_result_t<In1> n1 = m_next1();
+            iteration_result_t<In2> n2 = m_next2();
+            if (n0 && n1 && n2)
+            {
+                return std::tuple<In0, In1, In2>{ *n0, *n1, *n2 };
+            }
+            return {};
+        }
+    };
+
+    template <class In0, class In1>
+    struct next_function<In0, In1, void, void>
+    {
+        next_function_t<In0> m_next0;
+        next_function_t<In1> m_next1;
+
+        auto operator()() const -> iteration_result_t<std::tuple<In0, In1>>
+        {
+            iteration_result_t<In0> n0 = m_next0();
+            iteration_result_t<In1> n1 = m_next1();
+            if (n0 && n1)
+            {
+                return std::tuple<In0, In1>{ *n0, *n1 };
+            }
+            return {};
+        }
+    };
+
+    template <class T0, class T1, class T2, class T3, class Out = std::tuple<T0, T1, T2, T3>>
+    auto operator()(  //
+        const sequence<T0>& s0,
+        const sequence<T1>& s1,
+        const sequence<T2>& s2,
+        const sequence<T3>& s3) const -> sequence<Out>
+    {
+        return sequence<Out>{ next_function<T0, T1, T2, T3>{
+            s0.get_next_function(), s1.get_next_function(), s2.get_next_function(), s3.get_next_function() } };
+    }
+
+    template <class T0, class T1, class T2, class Out = std::tuple<T0, T1, T2>>
+    auto operator()(  //
+        const sequence<T0>& s0,
+        const sequence<T1>& s1,
+        const sequence<T2>& s2) const -> sequence<Out>
+    {
+        return sequence<Out>{ next_function<T0, T1, T2>{
+            s0.get_next_function(), s1.get_next_function(), s2.get_next_function() } };
+    }
+
+    template <class T0, class T1, class Out = std::tuple<T0, T1>>
+    auto operator()(  //
+        const sequence<T0>& s0,
+        const sequence<T1>& s1) const -> sequence<Out>
+    {
+        return sequence<Out>{ next_function<T0, T1>{ s0.get_next_function(), s1.get_next_function() } };
+    }
+};
+
+struct vec_fn
+{
+    template <class T, class... Tail>
+    auto operator()(T head, Tail&&... tail) const -> sequence<const T&>
+    {
+        return owning_fn{}(std::vector<T>{ std::move(head), std::forward<Tail>(tail)... });
+    }
+};
+
 }  // namespace detail
 
 static constexpr inline auto iota = detail::iota_fn{};
 static constexpr inline auto range = detail::range_fn{};
 static constexpr inline auto unfold = detail::unfold_fn{};
 static constexpr inline auto view = detail::view_fn{};
+static constexpr inline auto owning = detail::owning_fn{};
+static constexpr inline auto repeat = detail::repeat_fn{};
+static constexpr inline auto single = detail::single_fn{};
+static constexpr inline auto concat = detail::concat_fn{};
+static constexpr inline auto vec = detail::vec_fn{};
+static constexpr inline auto zip = detail::zip_fn{};
+
+template <class L, class R>
+auto operator+(const sequence<L>& lhs, const sequence<R>& rhs) -> sequence<std::common_type_t<L, R>>
+{
+    return concat(lhs, rhs);
+}
 
 }  // namespace core
 }  // namespace ferrugo
