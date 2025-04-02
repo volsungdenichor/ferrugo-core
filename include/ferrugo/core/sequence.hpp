@@ -1076,7 +1076,7 @@ struct concat_fn
         const sequence<T2>& s2,
         const sequence<T3>& s3) const -> sequence<Out>
     {
-        return (*this)((*this)((*this)(s0, s1), s2), s3);
+        return (*this)((*this)(s0, s1, s2), s3);
     }
 
     template <class T0, class T1, class T2, class Out = std::common_type_t<T0, T1, T2>>
