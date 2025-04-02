@@ -184,7 +184,7 @@ struct maybe_base<T&>
     {
     }
 
-    maybe_base(const maybe_base& other) : m_storage(other.m_value)
+    maybe_base(const maybe_base& other) : m_storage(other.m_storage)
     {
     }
 

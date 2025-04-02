@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ferrugo/core/maybe.hpp>
+#include <ferrugo/core/type_traits.hpp>
 #include <functional>
 
 namespace ferrugo
@@ -16,6 +17,77 @@ using next_function_t = std::function<iteration_result_t<T>()>;
 
 template <class T>
 struct sequence;
+
+template <class T>
+struct inspect_mixin
+{
+    template <class Func>
+    struct next_function
+    {
+        Func m_func;
+        next_function_t<T> m_next;
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            iteration_result_t<T> next = m_next();
+            if (next)
+            {
+                std::invoke(m_func, *next);
+            }
+            return next;
+        }
+    };
+
+    template <class Func>
+    auto inspect(Func&& func) const& -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Func>>{
+            std::forward<Func>(func), static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    template <class Func>
+    auto inspect(Func&& func) && -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Func>>{ std::forward<Func>(func),
+                                                               static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
+struct inspect_indexed_mixin
+{
+    template <class Func>
+    struct next_function
+    {
+        Func m_func;
+        next_function_t<T> m_next;
+        mutable std::ptrdiff_t m_index = 0;
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            iteration_result_t<T> next = m_next();
+            if (next)
+            {
+                std::invoke(m_func, m_index++, *next);
+            }
+            return next;
+        }
+    };
+
+    template <class Func>
+    auto inspect_indexed(Func&& func) const& -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Func>>{
+            std::forward<Func>(func), static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    template <class Func>
+    auto inspect_indexed(Func&& func) && -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Func>>{ std::forward<Func>(func),
+                                                               static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
 
 template <class T>
 struct transform_mixin
@@ -46,6 +118,42 @@ struct transform_mixin
 
     template <class Func, class Res = std::invoke_result_t<Func, T>>
     auto transform(Func&& func) && -> sequence<Res>
+    {
+        return sequence<Res>{ next_function<std::decay_t<Func>, Res>{
+            std::forward<Func>(func), static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
+struct transform_indexed_mixin
+{
+    template <class Func, class Out>
+    struct next_function
+    {
+        Func m_func;
+        next_function_t<T> m_next;
+        mutable std::ptrdiff_t m_index = 0;
+
+        auto operator()() const -> iteration_result_t<Out>
+        {
+            iteration_result_t<T> next = m_next();
+            if (next)
+            {
+                return std::invoke(m_func, m_index++, *std::move(next));
+            }
+            return {};
+        }
+    };
+
+    template <class Func, class Res = std::invoke_result_t<Func, std::ptrdiff_t, T>>
+    auto transform_indexed(Func&& func) const& -> sequence<Res>
+    {
+        return sequence<Res>{ next_function<std::decay_t<Func>, Res>{
+            std::forward<Func>(func), static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    template <class Func, class Res = std::invoke_result_t<Func, std::ptrdiff_t, T>>
+    auto transform_indexed(Func&& func) && -> sequence<Res>
     {
         return sequence<Res>{ next_function<std::decay_t<Func>, Res>{
             std::forward<Func>(func), static_cast<sequence<T>&&>(*this).get_next_function() } };
@@ -97,6 +205,51 @@ struct transform_maybe_mixin
 };
 
 template <class T>
+struct transform_maybe_indexed_mixin
+{
+    template <class Func, class Out>
+    struct next_function
+    {
+        Func m_func;
+        next_function_t<T> m_next;
+        mutable std::ptrdiff_t m_index;
+
+        auto operator()() const -> iteration_result_t<Out>
+        {
+            while (true)
+            {
+                iteration_result_t<T> res = m_next();
+                if (!res)
+                {
+                    break;
+                }
+
+                iteration_result_t<Out> r = std::invoke(m_func, m_index++, *std::move(res));
+                if (r)
+                {
+                    return r;
+                }
+            }
+            return {};
+        }
+    };
+
+    template <class Func, class Res = maybe_underlying_type_t<std::invoke_result_t<Func, std::ptrdiff_t, T>>>
+    auto transform_maybe_indexed(Func&& func) const& -> sequence<Res>
+    {
+        return sequence<Res>{ next_function<std::decay_t<Func>, Res>{
+            std::forward<Func>(func), static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    template <class Func, class Res = maybe_underlying_type_t<std::invoke_result_t<Func, std::ptrdiff_t, T>>>
+    auto transform_maybe_indexed(Func&& func) && -> sequence<Res>
+    {
+        return sequence<Res>{ next_function<std::decay_t<Func>, Res>{
+            std::forward<Func>(func), static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
 struct filter_mixin
 {
     template <class Pred>
@@ -133,6 +286,50 @@ struct filter_mixin
 
     template <class Pred>
     auto filter(Pred&& pred) && -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Pred>>{ std::forward<Pred>(pred),
+                                                               static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
+struct filter_indexed_mixin
+{
+    template <class Pred>
+    struct next_function
+    {
+        Pred m_pred;
+        next_function_t<T> m_next;
+        mutable std::ptrdiff_t m_index = 0;
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            while (true)
+            {
+                iteration_result_t<T> res = m_next();
+                if (!res)
+                {
+                    break;
+                }
+
+                if (std::invoke(m_pred, m_index++, *res))
+                {
+                    return res;
+                }
+            }
+            return {};
+        }
+    };
+
+    template <class Pred>
+    auto filter_indexed(Pred&& pred) const& -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Pred>>{
+            std::forward<Pred>(pred), static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    template <class Pred>
+    auto filter_indexed(Pred&& pred) && -> sequence<T>
     {
         return sequence<T>{ next_function<std::decay_t<Pred>>{ std::forward<Pred>(pred),
                                                                static_cast<sequence<T>&&>(*this).get_next_function() } };
@@ -187,6 +384,54 @@ struct drop_while_mixin
 };
 
 template <class T>
+struct drop_while_indexed_mixin
+{
+    template <class Pred>
+    struct next_function
+    {
+        Pred m_pred;
+        next_function_t<T> m_next;
+        mutable bool m_init = true;
+        mutable std::ptrdiff_t m_index = 0;
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            if (m_init)
+            {
+                while (true)
+                {
+                    iteration_result_t<T> res = m_next();
+                    if (!res)
+                    {
+                        return {};
+                    }
+                    if (!std::invoke(m_pred, m_index++, *res))
+                    {
+                        m_init = false;
+                        return res;
+                    }
+                }
+            }
+            return m_next();
+        }
+    };
+
+    template <class Pred>
+    auto drop_while_indexed(Pred&& pred) const& -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Pred>>{
+            std::forward<Pred>(pred), static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    template <class Pred>
+    auto drop_while_indexed(Pred&& pred) && -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Pred>>{ std::forward<Pred>(pred),
+                                                               static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
 struct take_while_mixin
 {
     template <class Pred>
@@ -215,6 +460,42 @@ struct take_while_mixin
 
     template <class Pred>
     auto take_while(Pred&& pred) && -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Pred>>{ std::forward<Pred>(pred),
+                                                               static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
+struct take_while_indexed_mixin
+{
+    template <class Pred>
+    struct next_function
+    {
+        Pred m_pred;
+        next_function_t<T> m_next;
+        mutable std::ptrdiff_t m_index = 0;
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            iteration_result_t<T> res = m_next();
+            if (!(res && std::invoke(m_pred, m_index++, *res)))
+            {
+                return {};
+            }
+            return res;
+        }
+    };
+
+    template <class Pred>
+    auto take_while_indexed(Pred&& pred) const& -> sequence<T>
+    {
+        return sequence<T>{ next_function<std::decay_t<Pred>>{
+            std::forward<Pred>(pred), static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    template <class Pred>
+    auto take_while_indexed(Pred&& pred) && -> sequence<T>
     {
         return sequence<T>{ next_function<std::decay_t<Pred>>{ std::forward<Pred>(pred),
                                                                static_cast<sequence<T>&&>(*this).get_next_function() } };
@@ -287,10 +568,65 @@ struct take_mixin
 };
 
 template <class T>
-struct empty_fn
+struct step_mixin
 {
-    auto operator()() const -> sequence<T>
+    struct next_function
     {
+        mutable std::ptrdiff_t m_count;
+        next_function_t<T> m_next;
+        mutable std::ptrdiff_t m_index = 0;
+
+        auto operator()() const -> iteration_result_t<T>
+        {
+            while (true)
+            {
+                iteration_result_t<T> res = m_next();
+                if (!res)
+                {
+                    break;
+                }
+
+                if (m_index++ % m_count == 0)
+                {
+                    return res;
+                }
+            }
+            return {};
+        }
+    };
+
+    auto step(std::ptrdiff_t n) const& -> sequence<T>
+    {
+        return sequence<T>{ next_function{ n, static_cast<const sequence<T>&>(*this).get_next_function() } };
+    }
+
+    auto step(std::ptrdiff_t n) && -> sequence<T>
+    {
+        return sequence<T>{ next_function{ n, static_cast<sequence<T>&&>(*this).get_next_function() } };
+    }
+};
+
+template <class T>
+struct empty_sequence
+{
+    auto operator()() const -> iteration_result_t<T>
+    {
+        return {};
+    }
+};
+
+template <class To, class From>
+struct cast_sequence
+{
+    next_function_t<From> m_from;
+
+    auto operator()() const -> iteration_result_t<To>
+    {
+        iteration_result_t<From> value = m_from();
+        if (value)
+        {
+            return static_cast<To>(*value);
+        }
         return {};
     }
 };
@@ -381,13 +717,21 @@ struct sequence_iterator
 };
 
 template <class T>
-struct sequence : transform_mixin<T>,
+struct sequence : inspect_mixin<T>,
+                  inspect_indexed_mixin<T>,
+                  transform_mixin<T>,
+                  transform_indexed_mixin<T>,
                   filter_mixin<T>,
+                  filter_indexed_mixin<T>,
                   transform_maybe_mixin<T>,
+                  transform_maybe_indexed_mixin<T>,
                   drop_while_mixin<T>,
+                  drop_while_indexed_mixin<T>,
                   take_while_mixin<T>,
+                  take_while_indexed_mixin<T>,
                   drop_mixin<T>,
-                  take_mixin<T>
+                  take_mixin<T>,
+                  step_mixin<T>
 {
     using iterator = sequence_iterator<T>;
     using next_function_type = typename iterator::next_function_type;
@@ -401,8 +745,19 @@ struct sequence : transform_mixin<T>,
     {
     }
 
-    sequence() : sequence(empty_fn<T>{})
+    template <class U, std::enable_if_t<std::is_constructible_v<T, U>, int> = 0>
+    sequence(const sequence<U>& other) : sequence(cast_sequence<T, U>{ other.get_next() })
     {
+    }
+
+    sequence() : sequence(empty_sequence<T>{})
+    {
+    }
+
+    template <class Container, std::enable_if_t<std::is_constructible_v<Container, iterator, iterator>, int> = 0>
+    operator Container() const
+    {
+        return Container{ begin(), end() };
     }
 
     iterator begin() const
@@ -512,11 +867,47 @@ struct unfold_fn
     }
 };
 
+struct view_fn
+{
+    template <class Iter, class Out>
+    struct next_function
+    {
+        mutable Iter m_iter;
+        Iter m_end;
+
+        next_function(Iter begin, Iter end) : m_iter(begin), m_end(end)
+        {
+        }
+
+        auto operator()() const -> iteration_result_t<Out>
+        {
+            if (m_iter == m_end)
+            {
+                return {};
+            }
+            return *m_iter++;
+        }
+    };
+
+    template <class Range, class Out = range_reference_t<Range>>
+    auto operator()(Range& range) const -> sequence<Out>
+    {
+        return sequence<Out>{ next_function<iterator_t<Range>, Out>{ std::begin(range), std::end(range) } };
+    }
+
+    template <class T>
+    auto operator()(const sequence<T>& seq) const -> sequence<T>
+    {
+        return seq;
+    }
+};
+
 }  // namespace detail
 
 static constexpr inline auto iota = detail::iota_fn{};
 static constexpr inline auto range = detail::range_fn{};
 static constexpr inline auto unfold = detail::unfold_fn{};
+static constexpr inline auto view = detail::view_fn{};
 
 }  // namespace core
 }  // namespace ferrugo

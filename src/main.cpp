@@ -28,12 +28,12 @@
 
 void run()
 {
+    std::vector<int> v = { 1, 2, 3, 4 };
     using namespace ferrugo::core;
-    const auto seq = range(20)
-                         .drop_while(L(it < 5))
-                         .take_while(L(it < 15))
+    const auto seq = view(v)
+                         .inspect([](int x) { std::cout << "> " << x << "\n"; })
+                         .filter(L(it % 2 == 0))
                          .transform(L(std::to_string(it)))
-                         .drop(1)
                          .transform(L("_" + it + "_"));
 
     for (const std::string& item : seq)
