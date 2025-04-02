@@ -1,8 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <ferrugo/core/maybe.hpp>
 #include <ferrugo/core/type_traits.hpp>
 #include <functional>
+#include <numeric>
 
 namespace ferrugo
 {
@@ -792,6 +794,7 @@ struct sequence : inspect_mixin<T>,
     using value_type = typename iterator::value_type;
     using reference = typename iterator::reference;
     using pointer = typename iterator::pointer;
+    using difference_type = typename iterator::difference_type;
 
     next_function_type m_next_fn;
 
@@ -819,24 +822,68 @@ struct sequence : inspect_mixin<T>,
         return Container{ begin(), end() };
     }
 
-    iterator begin() const
+    auto begin() const -> iterator
     {
         return iterator{ m_next_fn };
     }
 
-    iterator end() const
+    auto end() const -> iterator
     {
         return iterator{};
     }
 
-    const next_function_type& get_next_function() const&
+    auto get_next_function() const& -> const next_function_type&
     {
         return m_next_fn;
     }
 
-    next_function_type&& get_next_function() &&
+    auto get_next_function() && -> next_function_type&&
     {
         return std::move(m_next_fn);
+    }
+
+    auto maybe_front() const& -> maybe<reference>
+    {
+        return get_next_function()();
+    }
+
+    auto maybe_front() && -> maybe<reference>
+    {
+        return std::move(*this).get_next_function()();
+    }
+
+    template <class Pred>
+    auto find_if(Pred pred) const -> maybe<reference>
+    {
+        return this->drop_while(std::not_fn(std::move(pred))).maybe_front();
+    }
+
+    template <class Pred>
+    auto index_of(Pred pred) const -> maybe<difference_type>
+    {
+        difference_type index = 0;
+        iterator it = begin();
+        const iterator e = end();
+        for (; it != e; ++it, ++index)
+        {
+            if (std::invoke(pred, *it))
+            {
+                return index;
+            }
+        }
+        return {};
+    }
+
+    template <class Output>
+    auto copy(Output out) const -> Output
+    {
+        return std::copy(begin(), end(), std::move(out));
+    }
+
+    template <class Seed, class BinaryFunc>
+    auto accumulate(Seed seed, BinaryFunc&& func) const -> Seed
+    {
+        return std::accumulate(begin(), end(), std::move(seed), std::forward<BinaryFunc>(func));
     }
 };
 
@@ -849,14 +896,14 @@ struct iota_fn
     struct next_function
     {
         mutable In m_current;
-        auto operator()() const -> maybe<In>
+        auto operator()() const -> iteration_result_t<In>
         {
             return m_current++;
         }
     };
 
     template <class T>
-    auto operator()(T init) const -> iteration_result_t<T>
+    auto operator()(T init) const -> sequence<T>
     {
         return sequence<T>{ next_function<T>{ init } };
     }
@@ -1209,6 +1256,24 @@ struct vec_fn
     }
 };
 
+struct init_fn
+{
+    template <class Func, class Out = std::invoke_result_t<Func, std::ptrdiff_t>>
+    auto operator()(std::ptrdiff_t n, Func&& func) const -> sequence<Out>
+    {
+        return range_fn{}(n).transform(std::forward<Func>(func));
+    }
+};
+
+struct init_infinite_fn
+{
+    template <class Func, class Out = std::invoke_result_t<Func, std::ptrdiff_t>>
+    auto operator()(Func&& func) const -> sequence<Out>
+    {
+        return iota_fn{}(std::ptrdiff_t{ 0 }).transform(std::forward<Func>(func));
+    }
+};
+
 }  // namespace detail
 
 static constexpr inline auto iota = detail::iota_fn{};
@@ -1221,6 +1286,8 @@ static constexpr inline auto single = detail::single_fn{};
 static constexpr inline auto concat = detail::concat_fn{};
 static constexpr inline auto vec = detail::vec_fn{};
 static constexpr inline auto zip = detail::zip_fn{};
+static constexpr inline auto init = detail::init_fn{};
+static constexpr inline auto init_infinite = detail::init_infinite_fn{};
 
 template <class L, class R>
 auto operator+(const sequence<L>& lhs, const sequence<R>& rhs) -> sequence<std::common_type_t<L, R>>
