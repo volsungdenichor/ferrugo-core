@@ -686,6 +686,22 @@ struct cast_sequence
     }
 };
 
+template <class Iter, class Out>
+struct view_sequence
+{
+    mutable Iter m_iter;
+    Iter m_end;
+
+    auto operator()() const -> iteration_result_t<Out>
+    {
+        if (m_iter == m_end)
+        {
+            return {};
+        }
+        return *m_iter++;
+    }
+};
+
 template <class T>
 struct pointer_proxy
 {
@@ -802,13 +818,26 @@ struct sequence : inspect_mixin<T>,
     {
     }
 
-    template <class U, std::enable_if_t<std::is_constructible_v<T, U>, int> = 0>
-    sequence(const sequence<U>& other) : sequence(cast_sequence<T, U>{ other.get_next_function() })
+    template <class U, std::enable_if_t<std::is_constructible_v<reference, U>, int> = 0>
+    sequence(const sequence<U>& other) : sequence(cast_sequence<reference, U>{ other.get_next_function() })
     {
     }
 
-    template <class U, std::enable_if_t<std::is_constructible_v<T, U>, int> = 0>
-    sequence(sequence<U>&& other) : sequence(cast_sequence<T, U>{ std::move(other).get_next_function() })
+    template <class U, std::enable_if_t<std::is_constructible_v<reference, U>, int> = 0>
+    sequence(sequence<U>&& other) : sequence(cast_sequence<reference, U>{ std::move(other).get_next_function() })
+    {
+    }
+
+    template <class Iter, std::enable_if_t<std::is_constructible_v<reference, iter_reference_t<Iter>>, int> = 0>
+    sequence(Iter b, Iter e) : sequence(view_sequence<Iter, reference>{ b, e })
+    {
+    }
+
+    template <
+        class Range,
+        class Iter = iterator_t<Range>,
+        std::enable_if_t<std::is_constructible_v<reference, iter_reference_t<Iter>>, int> = 0>
+    sequence(Range&& range) : sequence(std::begin(range), std::end(range))
     {
     }
 
@@ -850,6 +879,11 @@ struct sequence : inspect_mixin<T>,
     auto maybe_front() && -> maybe<reference>
     {
         return std::move(*this).get_next_function()();
+    }
+
+    auto maybe_at(difference_type n) && -> maybe<reference>
+    {
+        return this->drop(n).maybe_front();
     }
 
     template <class Pred>
@@ -981,10 +1015,6 @@ struct view_fn
         mutable Iter m_iter;
         Iter m_end;
 
-        next_function(Iter begin, Iter end) : m_iter(begin), m_end(end)
-        {
-        }
-
         auto operator()() const -> iteration_result_t<Out>
         {
             if (m_iter == m_end)
@@ -1001,8 +1031,20 @@ struct view_fn
         return sequence<Out>{ next_function<iterator_t<Range>, Out>{ std::begin(range), std::end(range) } };
     }
 
+    template <class Iter, class Out = iter_reference_t<Iter>>
+    auto operator()(Iter b, Iter e) const -> sequence<Out>
+    {
+        return sequence<Out>{ next_function<Iter, Out>{ b, e } };
+    }
+
     template <class T>
     auto operator()(const sequence<T>& seq) const -> sequence<T>
+    {
+        return seq;
+    }
+
+    template <class T>
+    auto operator()(sequence<T>&& seq) const -> sequence<T>
     {
         return seq;
     }
@@ -1038,6 +1080,12 @@ struct owning_fn
 
     template <class T>
     auto operator()(const sequence<T>& s) const -> sequence<T>
+    {
+        return s;
+    }
+
+    template <class T>
+    auto operator()(sequence<T>&& s) const -> sequence<T>
     {
         return s;
     }
