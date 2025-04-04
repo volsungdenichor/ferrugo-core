@@ -4,6 +4,7 @@
 #include <ferrugo/core/maybe.hpp>
 #include <ferrugo/core/type_traits.hpp>
 #include <functional>
+#include <memory>
 #include <numeric>
 
 namespace ferrugo
