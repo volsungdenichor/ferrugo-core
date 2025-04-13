@@ -99,7 +99,7 @@ inline auto backtrace(std::size_t frames_to_skip = 0, std::size_t n = 128) -> st
     {
         Dl_info info;
         return dladdr(addr, &info) ? frame_t{ info.dli_fname ? get_file_name(info.dli_fname) : "",
-                                              info.dli_sname ? trim(128)(replace_type_names(demangle(info.dli_sname))) : "",
+                                              info.dli_sname ? trim(128)(demangle(info.dli_sname)) : "",
                                               addr }
                                    : frame_t{ "", "", addr };
     };

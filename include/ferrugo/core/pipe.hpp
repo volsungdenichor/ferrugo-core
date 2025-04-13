@@ -1,6 +1,5 @@
 #pragma once
 
-#include <ferrugo/core/type_traits.hpp>
 #include <functional>
 #include <tuple>
 
@@ -29,13 +28,13 @@ private:
         return std::invoke(std::get<I>(m_pipes), std::forward<Args>(args)...);
     }
 
-    template <std::size_t I, class... Args, require<(I + 1) == sizeof...(Pipes)> = 0>
+    template <std::size_t I, class... Args, std::enable_if_t<(I + 1) == sizeof...(Pipes), int> = 0>
     constexpr auto call(Args&&... args) const -> decltype(invoke<I>(std::forward<Args>(args)...))
     {
         return invoke<I>(std::forward<Args>(args)...);
     }
 
-    template <std::size_t I, class... Args, require<(I + 1) < sizeof...(Pipes)> = 0>
+    template <std::size_t I, class... Args, std::enable_if_t<(I + 1) < sizeof...(Pipes), int> = 0>
     constexpr auto call(Args&&... args) const -> decltype(call<I + 1>(invoke<I>(std::forward<Args>(args)...)))
     {
         return call<I + 1>(invoke<I>(std::forward<Args>(args)...));
@@ -65,13 +64,13 @@ private:
         return std::invoke(std::get<I>(m_pipes), std::forward<Args>(args)...);
     }
 
-    template <std::size_t I, class... Args, require<(I == 0)> = 0>
+    template <std::size_t I, class... Args, std::enable_if_t<(I == 0), int> = 0>
     constexpr auto call(Args&&... args) const -> decltype(invoke<0>(std::forward<Args>(args)...))
     {
         return invoke<0>(std::forward<Args>(args)...);
     }
 
-    template <std::size_t I, class... Args, require<(I > 0)> = 0>
+    template <std::size_t I, class... Args, std::enable_if_t<(I > 0), int> = 0>
     constexpr auto call(Args&&... args) const -> decltype(call<I - 1>(invoke<I>(std::forward<Args>(args)...)))
     {
         return call<I - 1>(invoke<I>(std::forward<Args>(args)...));
@@ -122,7 +121,8 @@ private:
 
 public:
     template <class... Pipes>
-    constexpr auto operator()(Pipes&&... pipes) const -> decltype(from_tuple(std::tuple_cat(to_tuple(std::forward<Pipes>(pipes))...)))
+    constexpr auto operator()(Pipes&&... pipes) const
+        -> decltype(from_tuple(std::tuple_cat(to_tuple(std::forward<Pipes>(pipes))...)))
     {
         return from_tuple(std::tuple_cat(to_tuple(std::forward<Pipes>(pipes))...));
     }
@@ -140,7 +140,7 @@ constexpr auto operator|=(pipe_t<L...> lhs, pipe_t<R...> rhs) -> decltype(pipe(s
     return pipe(std::move(lhs), std::move(rhs));
 }
 
-template <class T, class... Pipes, require<!detail::is_pipeline<std::decay_t<T>>{}> = 0>
+template <class T, class... Pipes, std::enable_if_t<!detail::is_pipeline<std::decay_t<T>>{}, int> = 0>
 constexpr auto operator|=(T&& item, const pipe_t<Pipes...>& p) -> decltype(p(std::forward<T>(item)))
 {
     return p(std::forward<T>(item));

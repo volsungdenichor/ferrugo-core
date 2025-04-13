@@ -1,7 +1,7 @@
 #include <array>
 #include <ferrugo/core/backtrace.hpp>
 #include <ferrugo/core/channel.hpp>
-#include <ferrugo/core/demangle.hpp>
+#include <ferrugo/core/dimensions.hpp>
 #include <ferrugo/core/error_handling.hpp>
 #include <ferrugo/core/functional.hpp>
 #include <ferrugo/core/iterator_range.hpp>
@@ -10,6 +10,7 @@
 #include <ferrugo/core/sequence.hpp>
 #include <ferrugo/core/sexpr.hpp>
 #include <ferrugo/core/std_ostream.hpp>
+#include <ferrugo/core/type_name.hpp>
 #include <forward_list>
 #include <fstream>
 #include <functional>
@@ -90,31 +91,9 @@ void run()
 {
     using namespace ferrugo::core;
 
-    std::multimap<int, std::string> map = {
-        { 1, "Ala" }, { 1, "Anna" }, { 1, "Agata" }, { 2, "Barbara" }, { 3, "Cecylia" }, { 4, "Dorota" },
-    };
-    for (const auto& item : map)
-    {
-        std::cout << item.second << " " << &item.second << "\n";
-    }
-
-    for (const auto& item : map_values(map, 1))
-    {
-        std::cout << item << " " << &item << "\n";
-    }
-
-    std::cout << map_maybe_at(map, 1) << "\n";
-    std::cout << map_at(map, 1) << "\n";
-    for (const auto& item : map_keys(map))
-    {
-        std::cout << item << "\n";
-    }
-    for (const auto& [k, v] : map_items(map))
-    {
-        std::cout << k << " = " << delimit(v, ", ") << "\n";
-    }
-
-    print(std::cout, number());
+    const auto f = fn(std::bind(std::plus<>{}, std::placeholders::_1, 1))
+        |= fn(std::bind(std::multiplies<>{}, std::placeholders::_1, 10));
+    std::cout << f(3) << "\n";
 }
 
 int main()

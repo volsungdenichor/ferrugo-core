@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ferrugo/core/demangle.hpp>
+#include <ferrugo/core/type_name.hpp>
 #include <ferrugo/core/type_traits.hpp>
 #include <functional>
 #include <sstream>
