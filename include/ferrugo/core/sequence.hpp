@@ -4,6 +4,7 @@
 #include <ferrugo/core/maybe.hpp>
 #include <ferrugo/core/type_traits.hpp>
 #include <functional>
+#include <istream>
 #include <memory>
 #include <numeric>
 
@@ -663,6 +664,45 @@ struct join_mixin<sequence<T>>
 };
 
 template <class T>
+struct for_each_mixin
+{
+    template <class Func>
+    void for_each(Func&& func) const&
+    {
+        const auto next_function = static_cast<const sequence<T>&>(*this).get_next_function();
+        while (true)
+        {
+            const iteration_result_t<T> next = next_function();
+            if (!next)
+            {
+                break;
+            }
+            std::invoke(func, *next);
+        }
+    }
+};
+
+template <class T>
+struct for_each_indexed_mixin
+{
+    template <class Func>
+    void for_each_indexed(Func&& func) const&
+    {
+        const auto next_function = static_cast<const sequence<T>&>(*this).get_next_function();
+        std::ptrdiff_t index = 0;
+        while (true)
+        {
+            const iteration_result_t<T> next = next_function();
+            if (!next)
+            {
+                break;
+            }
+            std::invoke(func, index++, *next);
+        }
+    }
+};
+
+template <class T>
 struct empty_sequence
 {
     auto operator()() const -> iteration_result_t<T>
@@ -804,7 +844,9 @@ struct sequence : inspect_mixin<T>,
                   drop_mixin<T>,
                   take_mixin<T>,
                   step_mixin<T>,
-                  join_mixin<T>
+                  join_mixin<T>,
+                  for_each_mixin<T>,
+                  for_each_indexed_mixin<T>
 {
     using iterator = sequence_iterator<T>;
     using next_function_type = typename iterator::next_function_type;
@@ -1323,6 +1365,58 @@ struct init_infinite_fn
     }
 };
 
+struct get_lines_fn
+{
+    static std::istream& get_line(std::istream& is, std::string& str)
+    {
+        str.clear();
+
+        std::istream::sentry se(is, true);
+        std::streambuf* sb = is.rdbuf();
+
+        while (true)
+        {
+            const int c = sb->sbumpc();
+            switch (c)
+            {
+                case '\n': return is;
+                case '\r':
+                    if (sb->sgetc() == '\n')
+                    {
+                        sb->sbumpc();
+                    }
+                    return is;
+                case std::streambuf::traits_type::eof():
+                    if (str.empty())
+                    {
+                        is.setstate(std::ios::eofbit);
+                    }
+                    return is;
+                default: str += (char)c;
+            }
+        }
+        return is;
+    }
+
+    struct next_function
+    {
+        std::istream& m_is;
+
+        auto operator()() const -> iteration_result_t<std::string>
+        {
+            std::string line = {};
+            return get_line(m_is, line)  //
+                       ? iteration_result_t<std::string>{ std::move(line) }
+                       : iteration_result_t<std::string>{};
+        }
+    };
+
+    auto operator()(std::istream& is) const -> sequence<std::string>
+    {
+        return sequence<std::string>{ next_function{ is } };
+    }
+};
+
 }  // namespace detail
 
 static constexpr inline auto iota = detail::iota_fn{};
@@ -1337,6 +1431,7 @@ static constexpr inline auto vec = detail::vec_fn{};
 static constexpr inline auto zip = detail::zip_fn{};
 static constexpr inline auto init = detail::init_fn{};
 static constexpr inline auto init_infinite = detail::init_infinite_fn{};
+static constexpr inline auto get_lines = detail::get_lines_fn{};
 
 template <class L, class R>
 auto operator+(const sequence<L>& lhs, const sequence<R>& rhs) -> sequence<std::common_type_t<L, R>>

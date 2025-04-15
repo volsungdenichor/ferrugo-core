@@ -1,3 +1,6 @@
+#include <sys/select.h>
+#include <unistd.h>
+
 #include <array>
 #include <ferrugo/core/backtrace.hpp>
 #include <ferrugo/core/channel.hpp>
@@ -77,23 +80,44 @@ auto map_items(const Map& map)
     return map_keys(map).transform([&](const auto& key) { return std::pair{ key, map_values(map, key) }; });
 }
 
-void print(std::ostream& os, const ferrugo::core::sequence<int> seq)
+#if _WIN32
+
+#include <conio.h>
+bool input_available()
 {
-    os << ferrugo::core::delimit(seq, ", ") << "\n";
+    return _kbhit();
 }
 
-ferrugo::core::sequence<int> number()
+#else
+
+#include <sys/select.h>
+#include <unistd.h>
+
+bool input_available()
 {
-    return ferrugo::core::vec(10, 9, 8, 7);
+    fd_set readfds = {};
+    struct timeval timeout = { 0 };  // No wait
+
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+
+    return select(STDIN_FILENO + 1, &readfds, nullptr, nullptr, &timeout) > 0;
 }
+#endif  // _WIN32
 
 void run()
 {
-    using namespace ferrugo::core;
-
-    const auto f = fn(std::bind(std::plus<>{}, std::placeholders::_1, 1))
-        |= fn(std::bind(std::multiplies<>{}, std::placeholders::_1, 10));
-    std::cout << f(3) << "\n";
+    std::ifstream file("potop.txt");
+    if (!file)
+    {
+        throw std::runtime_error{ "cannot open file" };
+    }
+    std::istream& is = std::cin;
+    ferrugo::core::get_lines(is)
+        .filter([](const std::string& line) { return !line.empty(); })
+        .take(10)
+        .for_each_indexed([](std::ptrdiff_t i, const std::string& line)
+                          { std::cout << "(" << i << ") [" << line << "]\n"; });
 }
 
 int main()
@@ -104,7 +128,7 @@ int main()
     }
     catch (...)
     {
-        std::cerr << "\n"
+        std::cout << "\n"
                   << "Error:"
                   << "\n"
                   << ferrugo::core::exception_proxy{};
