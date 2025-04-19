@@ -2,19 +2,12 @@
 
 #include <algorithm>
 #include <ferrugo/core/maybe.hpp>
+#include <ferrugo/core/type_traits.hpp>
 
 namespace ferrugo
 {
 namespace core
 {
-
-template <class Category, class Iter>
-struct iterator_of_category : std::is_base_of<Category, typename std::iterator_traits<Iter>::iterator_category>
-{
-};
-
-template <bool C>
-using require = std::enable_if_t<C, int>;
 
 namespace detail
 {
@@ -66,6 +59,8 @@ public:
 
     using maybe_reference = maybe<reference>;
 
+    using reverse_type = iterator_range<detail::reverse_iterator_t<iterator>>;
+
     iterator_range() = default;
     iterator_range(const iterator_range&) = default;
     iterator_range(iterator_range&&) noexcept = default;
@@ -79,6 +74,11 @@ public:
     }
 
     iterator_range(iterator b, size_type n) : iterator_range(b, std::next(b, n))
+    {
+    }
+
+    template <class Range, class = iterator_t<Range>>
+    iterator_range(Range&& range) : iterator_range(std::begin(range), std::end(range))
     {
     }
 
@@ -110,13 +110,13 @@ public:
         return begin() == end();
     }
 
-    template <class It = iterator, require<iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto ssize() const -> difference_type
     {
         return std::distance(begin(), end());
     }
 
-    template <class It = iterator, require<iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto size() const -> difference_type
     {
         return std::distance(begin(), end());
@@ -131,7 +131,7 @@ public:
         return *begin();
     }
 
-    template <class It = iterator, require<iterator_of_category<std::bidirectional_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_bidirectional_iterator<It>::value> = 0>
     auto back() const -> reference
     {
         if (empty())
@@ -150,7 +150,7 @@ public:
         return *begin();
     }
 
-    template <class It = iterator, require<iterator_of_category<std::bidirectional_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_bidirectional_iterator<It>::value> = 0>
     auto maybe_back() const -> maybe_reference
     {
         if (empty())
@@ -160,7 +160,7 @@ public:
         return *std::prev(end());
     }
 
-    template <class It = iterator, require<iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto at(difference_type n) const -> reference
     {
         if (!(0 <= n && n < size()))
@@ -170,13 +170,13 @@ public:
         return *std::next(begin(), n);
     }
 
-    template <class It = iterator, require<iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto operator[](difference_type n) const -> reference
     {
         return at(n);
     }
 
-    template <class It = iterator, require<iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto maybe_at(difference_type n) const -> maybe_reference
     {
         if (!(0 <= n && n < size()))
@@ -186,8 +186,8 @@ public:
         return *std::next(begin(), n);
     }
 
-    template <class It = iterator, require<iterator_of_category<std::bidirectional_iterator_tag, It>::value> = 0>
-    auto reverse() const -> iterator_range<detail::reverse_iterator_t<iterator>>
+    template <class It = iterator, require<is_bidirectional_iterator<It>::value> = 0>
+    auto reverse() const -> reverse_type
     {
         return detail::make_reverse(begin(), end());
     }
@@ -202,13 +202,13 @@ public:
         return iterator_range(advance(n), end());
     }
 
-    template <class It = iterator, require<iterator_of_category<std::bidirectional_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_bidirectional_iterator<It>::value> = 0>
     auto take_back(difference_type n) const -> iterator_range
     {
         return reverse().take(n).reverse();
     }
 
-    template <class It = iterator, require<iterator_of_category<std::bidirectional_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_bidirectional_iterator<It>::value> = 0>
     auto drop_back(difference_type n) const -> iterator_range
     {
         return reverse().drop(n).reverse();
@@ -228,13 +228,13 @@ public:
         return iterator_range(found, end());
     }
 
-    template <class Pred, class It = iterator, require<iterator_of_category<std::bidirectional_iterator_tag, It>::value> = 0>
+    template <class Pred, class It = iterator, require<is_bidirectional_iterator<It>::value> = 0>
     auto take_back_while(Pred&& pred) const -> iterator_range
     {
         return reverse().take_while(std::forward<Pred>(pred)).reverse();
     }
 
-    template <class Pred, class It = iterator, require<iterator_of_category<std::bidirectional_iterator_tag, It>::value> = 0>
+    template <class Pred, class It = iterator, require<is_bidirectional_iterator<It>::value> = 0>
     auto drop_back_while(Pred&& pred) const -> iterator_range
     {
         return reverse().drop_while(std::forward<Pred>(pred)).reverse();
@@ -247,7 +247,7 @@ public:
         return found != end() ? maybe_reference{ *found } : maybe_reference{};
     }
 
-    template <class It = iterator, require<iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto slice(const slice_t& info) const -> iterator_range
     {
         static const auto adjust = [](difference_type index, size_type size) -> size_type {  //
@@ -260,13 +260,13 @@ public:
     }
 
 private:
-    template <class It = iterator, require<iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto advance(difference_type n) const -> iterator
     {
         return begin() + std::min(ssize(), n);
     }
 
-    template <class It = iterator, require<!iterator_of_category<std::random_access_iterator_tag, It>::value> = 0>
+    template <class It = iterator, require<!is_random_access_iterator<It>::value> = 0>
     auto advance(difference_type n) const -> iterator
     {
         iterator it = begin();
@@ -283,10 +283,13 @@ private:
 };
 
 template <class Container>
-using subrange = iterator_range<decltype(std::begin(std::declval<Container>()))>;
+using subrange = iterator_range<iterator_t<Container>>;
 
 template <class T>
-using span = iterator_range<T*>;
+using span = iterator_range<const T*>;
+
+template <class T>
+using mut_span = iterator_range<T*>;
 
 }  // namespace core
 
