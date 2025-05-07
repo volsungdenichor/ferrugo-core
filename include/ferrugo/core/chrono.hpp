@@ -124,7 +124,7 @@ struct duration_base
 };
 
 template <class L, class R>
-using smaller_ratio = std::conditional_t<std::ratio_less_v<L, R>, L, R>;
+using common_ratio = std::conditional_t<std::ratio_less_v<L, R>, L, R>;
 
 template <class Ratio, class T>
 constexpr auto operator+(duration_base<Ratio, T> item) -> duration_base<Ratio, T>
@@ -143,7 +143,7 @@ template <
     class L,
     class RRatio,
     class R,
-    class OutRatio = smaller_ratio<LRatio, RRatio>,
+    class OutRatio = common_ratio<LRatio, RRatio>,
     class Out = std::invoke_result_t<std::plus<>, L, R>,
     class Res = duration_base<OutRatio, Out>>
 constexpr auto operator+(duration_base<LRatio, L> lhs, duration_base<RRatio, R> rhs) -> Res
@@ -158,7 +158,7 @@ template <
     class L,
     class RRatio,
     class R,
-    class OutRatio = smaller_ratio<LRatio, RRatio>,
+    class OutRatio = common_ratio<LRatio, RRatio>,
     class Out = std::invoke_result_t<std::minus<>, L, R>,
     class Res = duration_base<OutRatio, Out>>
 constexpr auto operator-(duration_base<LRatio, L> lhs, duration_base<RRatio, R> rhs) -> Res
@@ -204,7 +204,7 @@ constexpr auto operator/(duration_base<LRatio, L> lhs, R rhs) -> Res
 template <class LRatio, class L, class RRatio, class R, class Out = std::invoke_result_t<std::divides<>, L, R>>
 constexpr auto operator/(duration_base<LRatio, L> lhs, duration_base<RRatio, R> rhs) -> Out
 {
-    using OutRatio = smaller_ratio<LRatio, RRatio>;
+    using OutRatio = common_ratio<LRatio, RRatio>;
     using Res = duration_base<OutRatio, Out>;
     auto lt = Res{ lhs };
     auto rt = Res{ rhs };
@@ -338,102 +338,6 @@ inline auto operator""_h(unsigned long long v) -> hours_t<long>
 }
 }  // namespace literals
 
-struct unix_time_t
-{
-    milliseconds_t<double> m_value;
-
-    constexpr explicit unix_time_t(milliseconds_t<double> value) : m_value(value)
-    {
-    }
-
-    static auto now() -> unix_time_t
-    {
-        const std::chrono::system_clock::time_point time_point = std::chrono::system_clock::now();
-        return unix_time_t(milliseconds_t<double>{ static_cast<double>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(time_point.time_since_epoch()).count()) });
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const unix_time_t item)
-    {
-        return os << "(unix_time " << std::fixed << item.m_value << ")";
-    }
-};
-
-struct julian_day_t
-{
-    days_t<double> m_value;
-
-    static constexpr inline days_t<double> unix_epoch = days_t<double>{ 2'440'587.5 };
-
-    constexpr explicit julian_day_t(days_t<double> value = {}) : m_value(value)
-    {
-    }
-
-    constexpr julian_day_t(unix_time_t unix_time) : julian_day_t{ unix_epoch + unix_time.m_value }
-    {
-    }
-
-    static auto now() -> julian_day_t
-    {
-        return julian_day_t{ unix_time_t::now() };
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const julian_day_t item)
-    {
-        return os << std::fixed << item.m_value.get() << " JD";
-    }
-};
-
-constexpr auto operator-(julian_day_t lhs, julian_day_t rhs) -> days_t<double>
-{
-    return lhs.m_value - rhs.m_value;
-}
-
-constexpr auto operator+(julian_day_t lhs, days_t<double> rhs) -> julian_day_t
-{
-    return julian_day_t{ lhs.m_value + rhs };
-}
-
-constexpr auto operator-(julian_day_t lhs, days_t<double> rhs) -> julian_day_t
-{
-    return julian_day_t{ lhs.m_value - rhs };
-}
-
-constexpr auto operator+(days_t<double> lhs, julian_day_t rhs) -> julian_day_t
-{
-    return julian_day_t{ lhs + rhs.m_value };
-}
-
-constexpr auto operator==(julian_day_t lhs, julian_day_t rhs) -> bool
-{
-    return lhs.m_value == rhs.m_value;
-}
-
-constexpr auto operator!=(julian_day_t lhs, julian_day_t rhs) -> bool
-{
-    return lhs.m_value != rhs.m_value;
-}
-
-constexpr auto operator<(julian_day_t lhs, julian_day_t rhs) -> bool
-{
-    return lhs.m_value < rhs.m_value;
-}
-
-constexpr auto operator>(julian_day_t lhs, julian_day_t rhs) -> bool
-{
-    return lhs.m_value > rhs.m_value;
-}
-
-constexpr auto operator<=(julian_day_t lhs, julian_day_t rhs) -> bool
-{
-    return lhs.m_value <= rhs.m_value;
-}
-
-constexpr auto operator>=(julian_day_t lhs, julian_day_t rhs) -> bool
-{
-    return lhs.m_value >= rhs.m_value;
-}
-
 struct time_only_t
 {
     milliseconds_t<double> m_value;
@@ -482,6 +386,127 @@ struct time_only_t
     }
 };
 
+struct julian_date_t
+{
+    days_t<double> m_value;
+
+    constexpr explicit julian_date_t(days_t<double> value = {}) : m_value(value)
+    {
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const julian_date_t item)
+    {
+        return os << std::fixed << item.m_value.get() << " JD";
+    }
+};
+
+constexpr auto operator-(julian_date_t lhs, julian_date_t rhs) -> days_t<double>
+{
+    return lhs.m_value - rhs.m_value;
+}
+
+constexpr auto operator+(julian_date_t lhs, days_t<double> rhs) -> julian_date_t
+{
+    return julian_date_t{ lhs.m_value + rhs };
+}
+
+constexpr auto operator-(julian_date_t lhs, days_t<double> rhs) -> julian_date_t
+{
+    return julian_date_t{ lhs.m_value - rhs };
+}
+
+constexpr auto operator+(days_t<double> lhs, julian_date_t rhs) -> julian_date_t
+{
+    return julian_date_t{ lhs + rhs.m_value };
+}
+
+constexpr auto operator==(julian_date_t lhs, julian_date_t rhs) -> bool
+{
+    return lhs.m_value == rhs.m_value;
+}
+
+constexpr auto operator!=(julian_date_t lhs, julian_date_t rhs) -> bool
+{
+    return lhs.m_value != rhs.m_value;
+}
+
+constexpr auto operator<(julian_date_t lhs, julian_date_t rhs) -> bool
+{
+    return lhs.m_value < rhs.m_value;
+}
+
+constexpr auto operator>(julian_date_t lhs, julian_date_t rhs) -> bool
+{
+    return lhs.m_value > rhs.m_value;
+}
+
+constexpr auto operator<=(julian_date_t lhs, julian_date_t rhs) -> bool
+{
+    return lhs.m_value <= rhs.m_value;
+}
+
+constexpr auto operator>=(julian_date_t lhs, julian_date_t rhs) -> bool
+{
+    return lhs.m_value >= rhs.m_value;
+}
+
+struct modified_julian_date_t
+{
+    days_t<double> m_value;
+
+    constexpr explicit modified_julian_date_t(days_t<double> value) : m_value(value)
+    {
+    }
+
+    constexpr modified_julian_date_t(julian_date_t jd) : modified_julian_date_t(jd.m_value - offset)
+    {
+    }
+
+    constexpr operator julian_date_t() const
+    {
+        return julian_date_t{ m_value + offset };
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const modified_julian_date_t item)
+    {
+        return os << std::fixed << item.m_value.get() << " MJD";
+    }
+
+    static constexpr inline days_t<double> offset = days_t<double>{ 2'400'000.5 };
+};
+
+struct unix_time_t
+{
+    milliseconds_t<double> m_value;
+
+    constexpr explicit unix_time_t(milliseconds_t<double> value) : m_value(value)
+    {
+    }
+
+    constexpr unix_time_t(julian_date_t jd) : unix_time_t(jd.m_value - unix_epoch)
+    {
+    }
+
+    constexpr operator julian_date_t() const
+    {
+        return julian_date_t{ unix_epoch + m_value };
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const unix_time_t item)
+    {
+        return os << "(unix_time " << std::fixed << item.m_value << ")";
+    }
+
+    static auto now() -> unix_time_t
+    {
+        const std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
+        return unix_time_t(milliseconds_t<double>{
+            static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count()) });
+    }
+
+    static constexpr inline days_t<double> unix_epoch = days_t<double>{ 2'440'587.5 };
+};
+
 struct utc_time_t
 {
     struct date_type
@@ -501,26 +526,16 @@ struct utc_time_t
     date_type date;
     time_only_t time;
 
-    constexpr utc_time_t(julian_day_t jd) : date{}, time{}
+    constexpr utc_time_t(julian_date_t jd) : date(), time()
     {
         const auto [d, t] = split(jd.m_value.get());
         date = get_date(d);
         time = time_only_t{ days_t<>{ t } };
     }
 
-    constexpr auto to_julian_day() const -> julian_day_t
+    constexpr operator julian_date_t() const
     {
-        return julian_day_t{ days_t<>{ to_time_point(date.year, date.month, date.day) } + time.get() };
-    }
-
-    constexpr operator julian_day_t() const
-    {
-        return to_julian_day();
-    }
-
-    static auto now() -> utc_time_t
-    {
-        return utc_time_t{ julian_day_t::now() };
+        return julian_date_t{ days_t<double>{ to_time_point(date.year, date.month, date.day) } + time.get() };
     }
 
     friend std::ostream& operator<<(std::ostream& os, const utc_time_t& item)
@@ -568,7 +583,7 @@ struct utc_time_t
                    + day);
     }
 
-    static constexpr auto get_date(double js) -> date_type
+    static constexpr auto get_date(double js) -> utc_time_t::date_type
     {
         const auto wjd = std::floor(js - 0.5) + 0.5;
         const auto depoch = wjd - epoch;
@@ -583,7 +598,7 @@ struct utc_time_t
         const auto month = (int)std::floor((((yearday + leap_adj) * 12) + 373) / 367);
         const auto day = (int)((wjd - to_time_point(year, month, 1)) + 1);
 
-        return date_type{ year + (month / 12), (month % 12), day };
+        return utc_time_t::date_type{ year + (month / 12), (month % 12), day };
     }
 };
 
@@ -592,30 +607,15 @@ struct local_time_t
     utc_time_t utc;
     minutes_t<int> offset;
 
-    friend std::ostream& operator<<(std::ostream& os, const local_time_t& item)
+    friend std::ostream& operator<<(std::ostream& os, const local_time_t item)
     {
-        os << utc_time_t{ item.to_julian_day() + item.offset };
+        os << utc_time_t{ item.utc + item.offset };
         int offset_min = item.offset.get();
         os << (offset_min >= 0 ? "+" : "-");
         offset_min = std::abs(offset_min);
         os << std::setfill('0') << std::setw(2) << (offset_min / 60);
         os << ":" << std::setfill('0') << std::setw(2) << (offset_min % 60);
         return os;
-    }
-
-    constexpr auto to_julian_day() const -> julian_day_t
-    {
-        return utc.to_julian_day();
-    }
-
-    constexpr operator julian_day_t() const
-    {
-        return to_julian_day();
-    }
-
-    static auto now(minutes_t<int> offset) -> local_time_t
-    {
-        return local_time_t{ utc_time_t::now(), offset };
     }
 };
 

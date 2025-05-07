@@ -1,8 +1,10 @@
 #pragma once
 
 #include <condition_variable>
-#include <list>
+#include <deque>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <thread>
 
 namespace ferrugo
@@ -10,108 +12,165 @@ namespace ferrugo
 namespace core
 {
 
-namespace detail
+template <class T>
+struct channel
 {
+    using value_type = T;
+    using queue_type = std::deque<T>;
 
-template <class Queue>
-class basic_channel
-{
-public:
-    using queue_type = Queue;
-
-    bool empty() const
-    {
-        std::unique_lock<std::mutex> lock{ m_mutex };
-        return m_queue.empty();
-    }
-
-protected:
-    basic_channel() : m_queue(), m_mutex{}, m_condition_var{}
-    {
-    }
-
+    std::size_t m_capacity;
     queue_type m_queue;
+    bool m_is_closed;
     mutable std::mutex m_mutex;
-    std::condition_variable m_condition_var;
-};
+    std::condition_variable m_cond_is_empty;
+    std::condition_variable m_cond_is_full;
 
-}  // namespace detail
-
-template <class T, class Queue = std::list<T>>
-class ichannel : public virtual detail::basic_channel<Queue>
-{
-private:
-    using base_type = detail::basic_channel<Queue>;
-
-public:
-    ichannel() = default;
-
-    ichannel(const ichannel&) = delete;
-    ichannel& operator=(const ichannel&) = delete;
-
-    template <class R, class P>
-    std::optional<T> try_pop(std::chrono::duration<R, P> timeout)
+    explicit channel(std::size_t capacity = 0)
+        : m_capacity(capacity)
+        , m_queue()
+        , m_is_closed(false)
+        , m_mutex()
+        , m_cond_is_empty()
+        , m_cond_is_full()
     {
-        std::unique_lock<std::mutex> lock{ this->m_mutex };
+    }
 
-        if (!this->m_condition_var.wait_for(lock, timeout, [&]() { return !this->m_queue.empty(); }))
+    channel(const channel&) = delete;
+    channel(channel&&) = delete;
+
+    channel& operator=(const channel&) = delete;
+    channel& operator=(channel&&) = delete;
+
+    ~channel()
+    {
+        close();
+    }
+
+    void close()
+    {
+        std::unique_lock lock(m_mutex);
+        m_is_closed = true;
+        m_cond_is_empty.notify_all();
+        m_cond_is_full.notify_all();
+    }
+
+    bool is_closed() const
+    {
+        std::scoped_lock lock(m_mutex);
+        return m_is_closed;
+    }
+
+    void push(T value)
+    {
+        std::unique_lock lock(m_mutex);
+        m_cond_is_full.wait(lock, [&]() { return m_is_closed || m_capacity == 0 || m_queue.size() < m_capacity; });
+
+        if (m_is_closed)
+        {
+            throw std::runtime_error{ "sending to a closed channel" };
+        }
+
+        m_queue.push_back(value);
+        m_cond_is_empty.notify_one();
+    }
+
+    template <class Rep, class Period>
+    bool push(T value, std::chrono::duration<Rep, Period> timeout)
+    {
+        std::unique_lock lock(m_mutex);
+        const bool status = m_cond_is_full.wait_for(
+            lock, timeout, [&]() { return m_is_closed || m_capacity == 0 || m_queue.size() < m_capacity; });
+
+        if (m_is_closed)
+        {
+            throw std::runtime_error{ "sending to a closed channel" };
+        }
+
+        if (!status)
+        {
+            return false;
+        }
+
+        m_queue.push_back(value);
+        m_cond_is_empty.notify_one();
+        return true;
+    }
+
+    std::optional<T> pop()
+    {
+        std::unique_lock lock(m_mutex);
+        m_cond_is_empty.wait(lock, [&]() { return m_is_closed || !m_queue.empty(); });
+
+        if (m_queue.empty())
         {
             return {};
         }
 
-        return do_pop();
+        T value = std::move(m_queue.front());
+        m_queue.pop_front();
+        m_cond_is_full.notify_one();
+        return value;
     }
 
-    T pop()
+    template <class Rep, class Period>
+    std::optional<T> pop(std::chrono::duration<Rep, Period> timeout)
     {
-        std::unique_lock<std::mutex> lock{ this->m_mutex };
+        std::unique_lock lock(m_mutex);
+        m_cond_is_empty.wait_for(lock, timeout, [&]() { return m_is_closed || !m_queue.empty(); });
 
-        this->m_condition_var.wait(lock, [&]() { return !this->m_queue.empty(); });
-        return do_pop();
-    }
+        if (m_queue.empty())
+        {
+            return {};
+        }
 
-private:
-    T do_pop()
-    {
-        T item = std::move(this->m_queue.front());
-        this->m_queue.pop_front();
-        return item;
+        T value = std::move(m_queue.front());
+        m_queue.pop_front();
+        m_cond_is_full.notify_one();
+        return value;
     }
 };
 
-template <class T, class Queue = std::list<T>>
-class ochannel : public virtual detail::basic_channel<Queue>
+template <class T>
+struct in_channel_ref
 {
-private:
-    using base_type = detail::basic_channel<Queue>;
+    channel<T>* m_ch;
 
-public:
-    ochannel() = default;
-
-    ochannel(const ochannel&) = delete;
-    ochannel& operator=(const ochannel&) = delete;
-
-    void push(T item)
+    in_channel_ref(channel<T>& ch) : m_ch(&ch)
     {
-        std::unique_lock<std::mutex> lock{ this->m_mutex };
+    }
 
-        this->m_queue.push_back(std::move(item));
-        this->m_condition_var.notify_one();
+    std::optional<T> pop()
+    {
+        return m_ch->pop();
+    }
+
+    template <class Rep, class Period>
+    std::optional<T> pop(std::chrono::duration<Rep, Period> timeout)
+    {
+        return m_ch->pop(timeout);
     }
 };
 
-template <class T, class Queue = std::list<T>>
-class iochannel : public ichannel<T, Queue>, public ochannel<T, Queue>
+template <class T>
+struct out_channel_ref
 {
-public:
-    iochannel() = default;
+    channel<T>* m_ch;
 
-    iochannel(const iochannel&) = delete;
-    iochannel& operator=(const iochannel&) = delete;
+    out_channel_ref(channel<T>& ch) : m_ch(&ch)
+    {
+    }
+
+    void push(T value)
+    {
+        return m_ch->push(std::move(value));
+    }
+
+    template <class Rep, class Period>
+    bool push(T value, std::chrono::duration<Rep, Period> timeout)
+    {
+        return m_ch->push(std::move(value), timeout);
+    }
 };
-
-template <class T, class Queue = std::list<T>>
-using channel = iochannel<T, Queue>;
 
 }  // namespace core
 }  // namespace ferrugo
