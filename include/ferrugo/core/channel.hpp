@@ -131,10 +131,9 @@ struct channel
 };
 
 template <class T>
-struct in_channel_ref
+class in_channel_ref
 {
-    channel<T>* m_ch;
-
+public:
     in_channel_ref(channel<T>& ch) : m_ch(&ch)
     {
     }
@@ -149,13 +148,15 @@ struct in_channel_ref
     {
         return m_ch->pop(timeout);
     }
+
+private:
+    channel<T>* m_ch;
 };
 
 template <class T>
-struct out_channel_ref
+class out_channel_ref
 {
-    channel<T>* m_ch;
-
+public:
     out_channel_ref(channel<T>& ch) : m_ch(&ch)
     {
     }
@@ -170,6 +171,9 @@ struct out_channel_ref
     {
         return m_ch->push(std::move(value), timeout);
     }
+
+private:
+    channel<T>* m_ch;
 };
 
 }  // namespace core
