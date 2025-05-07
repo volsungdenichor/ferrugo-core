@@ -131,77 +131,71 @@ struct channel
 };
 
 template <class T>
-class in_channel_ref
+class channel_ref_base
+{
+protected:
+    channel_ref_base(channel<T>& ch) : m_ch{ &ch }
+    {
+    }
+
+    channel<T>& get() const
+    {
+        return *m_ch;
+    }
+
+public:
+    void close()
+    {
+        get().close();
+    }
+
+    bool is_closed() const
+    {
+        return get().is_closed();
+    }
+
+private:
+    channel<T>* m_ch;
+};
+
+template <class T>
+class in_channel_ref : public channel_ref_base<T>
 {
 public:
-    in_channel_ref(channel<T>& ch) : m_ch(&ch)
+    in_channel_ref(channel<T>& ch) : channel_ref_base<T>{ ch }
     {
     }
 
     std::optional<T> pop()
     {
-        return get().pop();
+        return this->get().pop();
     }
 
     template <class Rep, class Period>
     std::optional<T> pop(std::chrono::duration<Rep, Period> timeout)
     {
-        return get().pop(timeout);
+        return this->get().pop(timeout);
     }
-
-    void close()
-    {
-        get().close();
-    }
-
-    bool is_closed() const
-    {
-        return get().is_closed();
-    }
-
-private:
-    channel<T>& get() const
-    {
-        return *m_ch;
-    }
-    channel<T>* m_ch;
 };
 
 template <class T>
-class out_channel_ref
+class out_channel_ref : public channel_ref_base<T>
 {
 public:
-    out_channel_ref(channel<T>& ch) : m_ch(&ch)
+    out_channel_ref(channel<T>& ch) : channel_ref_base<T>{ ch }
     {
     }
 
     void push(T value)
     {
-        return get().push(std::move(value));
+        return this->get().push(std::move(value));
     }
 
     template <class Rep, class Period>
     bool push(T value, std::chrono::duration<Rep, Period> timeout)
     {
-        return get().push(std::move(value), timeout);
+        return this->get().push(std::move(value), timeout);
     }
-
-    void close()
-    {
-        get().close();
-    }
-
-    bool is_closed() const
-    {
-        return get().is_closed();
-    }
-
-private:
-    channel<T>& get() const
-    {
-        return *m_ch;
-    }
-    channel<T>* m_ch;
 };
 
 }  // namespace core
