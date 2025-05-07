@@ -140,16 +140,30 @@ public:
 
     std::optional<T> pop()
     {
-        return m_ch->pop();
+        return get().pop();
     }
 
     template <class Rep, class Period>
     std::optional<T> pop(std::chrono::duration<Rep, Period> timeout)
     {
-        return m_ch->pop(timeout);
+        return get().pop(timeout);
+    }
+
+    void close()
+    {
+        get().close();
+    }
+
+    bool is_closed() const
+    {
+        return get().is_closed();
     }
 
 private:
+    channel<T>& get() const
+    {
+        return *m_ch;
+    }
     channel<T>* m_ch;
 };
 
@@ -163,16 +177,30 @@ public:
 
     void push(T value)
     {
-        return m_ch->push(std::move(value));
+        return get().push(std::move(value));
     }
 
     template <class Rep, class Period>
     bool push(T value, std::chrono::duration<Rep, Period> timeout)
     {
-        return m_ch->push(std::move(value), timeout);
+        return get().push(std::move(value), timeout);
+    }
+
+    void close()
+    {
+        get().close();
+    }
+
+    bool is_closed() const
+    {
+        return get().is_closed();
     }
 
 private:
+    channel<T>& get() const
+    {
+        return *m_ch;
+    }
     channel<T>* m_ch;
 };
 
