@@ -388,10 +388,39 @@ struct value_t
         }
     };
 
+    static bool to_boolean(const value_t& v)
+    {
+        if (const auto b = v.if_boolean())
+        {
+            return *b;
+        }
+        return false;
+    }
+
     struct callable_t : public std::function<value_t(span<value_t>)>
     {
         using base_t = std::function<value_t(span<value_t>)>;
         using base_t::base_t;
+
+        auto call(span<value_t> args) const -> value_t
+        {
+            return (*this)(args);
+        }
+
+        auto call(const value_t& arg) const -> value_t
+        {
+            return call(span<value_t>(&arg, 1));
+        }
+
+        bool test(span<value_t> args) const
+        {
+            return to_boolean(call(args));
+        }
+
+        bool test(const value_t& arg) const
+        {
+            return to_boolean(call(arg));
+        }
 
         friend std::ostream& operator<<(std::ostream& os, const callable_t& item)
         {
@@ -1144,7 +1173,7 @@ struct evaluate_fn
     struct clojure_t
     {
         const evaluate_fn& self;
-        std::vector<value_t::symbol_t> params;
+        value_t parameters;
         std::vector<value_t> body;
         stack_t& stack;
 
@@ -1152,9 +1181,21 @@ struct evaluate_fn
         {
             auto new_stack = stack_t{ &stack };
 
+            const std::vector<value_t::symbol_t> params = std::invoke(
+                [&]() -> std::vector<value_t::symbol_t>
+                {
+                    std::vector<value_t::symbol_t> result;
+                    const auto p = deref(parameters.if_vector(), "vector required");
+                    for (const value_t& v : p)
+                    {
+                        result.push_back(deref(v.if_symbol(), "symbol required"));
+                    }
+                    return result;
+                });
+
             if (params.size() >= 2 && params.at(params.size() - 2) == value_t::symbol_t{ "&" })
             {
-                const auto regular_params = span<value_t::symbol_t>{ params }.slice({}, -2);
+                const auto regular_params = span<value_t::symbol_t>{ params, }.slice({}, -2);
 
                 if (args.size() < regular_params.size())
                 {
@@ -1221,12 +1262,7 @@ struct evaluate_fn
 
     auto eval_callable(span<value_t> input, stack_t& stack) const -> value_t::callable_t
     {
-        std::vector<value_t::symbol_t> params;
-        for (const value_t& p : deref(input.at(0).if_vector(), "params: vector expected"))
-        {
-            params.push_back(deref(p.if_symbol(), "param: symbol expected"));
-        }
-        return value_t::callable_t{ clojure_t{ *this, std::move(params), input.slice(1, {}), stack } };
+        return value_t::callable_t{ clojure_t{ *this, input.at(0), input.slice(1, {}), stack } };
     }
 
     auto eval_fn(span<value_t> input, stack_t& stack) const -> value_t
@@ -1351,7 +1387,7 @@ struct evaluate_fn
         return output;
     }
 
-    auto eval(const value_t& value, stack_t& stack) const -> value_t
+    auto do_eval(const value_t& value, stack_t& stack) const -> value_t
     {
         if (const auto symbol = value.if_symbol())
         {
@@ -1376,16 +1412,21 @@ struct evaluate_fn
         return value;
     }
 
-    auto operator()(const value_t& value, stack_t& stack) const -> value_t
+    auto eval(const value_t& value, stack_t& stack) const -> value_t
     {
         try
         {
-            return eval(value, stack);
+            return do_eval(value, stack);
         }
         catch (const std::exception& ex)
         {
-            throw;
+            std::throw_with_nested(std::runtime_error{ str("Error on evaluating `", value, "`") });
         }
+    }
+
+    auto operator()(const value_t& value, stack_t& stack) const -> value_t
+    {
+        return eval(value, stack);
     }
 };
 
