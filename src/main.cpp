@@ -218,8 +218,15 @@ void run()
     const auto result = edn::evaluate(value, stack);
     std::cout << "> " << result << "\n";
 #endif
-    core::println(core::try_create<S>(32));
-    core::println("A", std::vector<int>{}, std::array<int, 3>{});
+
+    const auto p = core::pipe(LAMBDA(it + 3), LAMBDA(it * 10), core::format);
+    core::println(p);
+    core::println(p(3));
+
+    const auto f = core::with([](std::string& x) { x += "_"; }, [](std::string& x) { x = "!" + x; });
+    const std::string text = "ABC";
+    const std::string other = f(text);
+    core::println(other);
 }
 
 int main()

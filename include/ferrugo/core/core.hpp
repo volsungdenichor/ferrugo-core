@@ -238,6 +238,7 @@ using detail::format;
 using detail::format_to;
 using detail::print;
 using detail::println;
+static constexpr inline auto str = detail::format_fn{};
 
 template <>
 struct formatter<std::exception_ptr>
@@ -281,7 +282,7 @@ struct result;
 template <class T>
 struct maybe;
 
-namespace result_details
+namespace detail
 {
 
 template <class T>
@@ -339,240 +340,13 @@ constexpr auto to_error(In&& in) -> Result
     return Result{ error(std::forward<In>(in).error()) };
 }
 
-template <class T, class E>
-struct has_value_mixin
-{
-    constexpr bool has_value() const noexcept
-    {
-        const auto& self = static_cast<const result<T, E>&>(*this);
-        return static_cast<bool>(self);
-    }
+}  // namespace detail
 
-    constexpr bool has_error() const noexcept
-    {
-        return !has_value();
-    }
-};
+using detail::error;
+using detail::error_wrapper;
 
 template <class T, class E>
-struct and_then_mixin
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) const& -> Result
-    {
-        static_assert(is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
-        const auto& self = static_cast<const result<T, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), self.value())
-                   : to_error<Result>(self);
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) && -> Result
-    {
-        static_assert(is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
-        auto& self = static_cast<result<T, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), std::move(self).value())
-                   : to_error<Result>(std::move(self));
-    }
-};
-
-template <class T, class E>
-struct and_then_mixin<T&, E>
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) const& -> Result
-    {
-        static_assert(is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
-        const auto& self = static_cast<const result<T&, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), self.value())
-                   : to_error<Result>(self);
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) && -> Result
-    {
-        static_assert(is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
-        auto& self = static_cast<result<T&, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), std::move(self).value())
-                   : to_error<Result>(std::move(self));
-    }
-};
-
-template <class E>
-struct and_then_mixin<void, E>
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) const& -> Result
-    {
-        static_assert(is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
-        const auto& self = static_cast<const result<void, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func))
-                   : to_error<Result>(self);
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) && -> Result
-    {
-        static_assert(is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
-        auto& self = static_cast<result<void, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func))
-                   : to_error<Result>(std::move(self));
-    }
-};
-
-template <class T, class E>
-struct transform_mixin
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = result<FuncResult, E>>
-    constexpr auto transform(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const result<T, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), self.value())
-                   : to_error<Result>(self);
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = result<FuncResult, E>>
-    constexpr auto transform(Func&& func) && -> Result
-    {
-        auto& self = static_cast<result<T, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), std::move(self).value())
-                   : to_error<Result>(std::move(self));
-    }
-};
-
-template <class T, class E>
-struct transform_mixin<T&, E>
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = result<FuncResult, E>>
-    constexpr auto transform(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const result<T&, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), self.value())
-                   : to_error<Result>(self);
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = result<FuncResult, E>>
-    constexpr auto transform(Func&& func) && -> Result
-    {
-        auto& self = static_cast<result<T&, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func), self.value())
-                   : to_error<Result>(std::move(self));
-    }
-};
-
-template <class E>
-struct transform_mixin<void, E>
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = result<FuncResult, E>>
-    constexpr auto transform(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const result<void, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func))
-                   : to_error<Result>(self);
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = result<FuncResult, E>>
-    constexpr auto transform(Func&& func) && -> Result
-    {
-        auto& self = static_cast<result<void, E>&>(*this);
-        return self  //
-                   ? to_ok<Result>(std::forward<Func>(func))
-                   : to_error<Result>(std::move(self));
-    }
-};
-
-template <class T, class E>
-struct or_else_mixin
-{
-    template <
-        class Func,
-        class FuncResult = std::invoke_result_t<Func, const E&>,
-        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<T, E>, FuncResult>>
-    constexpr auto or_else(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const result<T, E>&>(*this);
-        if constexpr (std::is_void_v<FuncResult>)
-        {
-            return self  //
-                       ? Result{ self }
-                       : (std::invoke(std::forward<Func>(func), self.error()), Result{ self });
-        }
-        else
-        {
-            static_assert(is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
-            return self  //
-                       ? Result{ self }
-                       : Result{ std::invoke(std::forward<Func>(func), self.error()) };
-        }
-    }
-
-    template <
-        class Func,
-        class FuncResult = std::invoke_result_t<Func, const E&>,
-        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<T, E>, FuncResult>>
-    constexpr auto or_else(Func&& func) && -> Result
-    {
-        auto& self = static_cast<result<T, E>&>(*this);
-        if constexpr (std::is_void_v<FuncResult>)
-        {
-            return self  //
-                       ? Result{ std::move(self) }
-                       : (std::invoke(std::forward<Func>(func), self.error()), Result{ std::move(self) });
-        }
-        else
-        {
-            static_assert(is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
-            return self  //
-                       ? Result{ std::move(self) }
-                       : Result{ std::invoke(std::forward<Func>(func), std::move(self).error()) };
-        }
-    }
-};
-
-template <class T, class E>
-struct transform_error_mixin
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<T, FuncResult>>
-    constexpr auto transform_error(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const result<T, E>&>(*this);
-        return self  //
-                   ? Result{ self.value() }
-                   : Result{ error(std::invoke(std::forward<Func>(func), self.error())) };
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<T, FuncResult>>
-    constexpr auto transform_error(Func&& func) && -> Result
-    {
-        auto& self = static_cast<result<T, E>&>(*this);
-        return self  //
-                   ? Result{ std::move(self).value() }
-                   : Result{ error(std::invoke(std::forward<Func>(func), std::move(self).error())) };
-    }
-};
-
-}  // namespace result_details
-
-using result_details::error;
-using result_details::error_wrapper;
-
-template <class T, class E>
-struct result : result_details::has_value_mixin<T, E>,
-                result_details::and_then_mixin<T, E>,
-                result_details::transform_mixin<T, E>,
-                result_details::or_else_mixin<T, E>,
-                result_details::transform_error_mixin<T, E>
+struct result
 {
     using value_type = T;
     using error_type = E;
@@ -662,16 +436,118 @@ struct result : result_details::has_value_mixin<T, E>,
         return std::get<error_storage>(std::move(m_storage)).m_error;
     }
 
+    constexpr bool has_value() const noexcept
+    {
+        return static_cast<bool>(*this);
+    }
+
+    constexpr bool has_error() const noexcept
+    {
+        return !has_value();
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) const& -> Result
+    {
+        static_assert(
+            detail::is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), value())
+                   : detail::to_error<Result>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) && -> Result
+    {
+        static_assert(
+            detail::is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), std::move(*this).value())
+                   : detail::to_error<Result>(std::move(*this));
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = result<FuncResult, E>>
+    constexpr auto transform(Func&& func) const& -> Result
+    {
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), value())
+                   : detail::to_error<Result>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = result<FuncResult, E>>
+    constexpr auto transform(Func&& func) && -> Result
+    {
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), std::move(*this).value())
+                   : detail::to_error<Result>(std::move(*this));
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func, const E&>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<T, E>, FuncResult>>
+    constexpr auto or_else(Func&& func) const& -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ *this }
+                       : (std::invoke(std::forward<Func>(func), error()), Result{ *this });
+        }
+        else
+        {
+            static_assert(
+                detail::is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
+            return *this  //
+                       ? Result{ *this }
+                       : Result{ std::invoke(std::forward<Func>(func), error()) };
+        }
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func, const E&>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<T, E>, FuncResult>>
+    constexpr auto or_else(Func&& func) && -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : (std::invoke(std::forward<Func>(func), error()), Result{ std::move(*this) });
+        }
+        else
+        {
+            static_assert(
+                detail::is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : Result{ std::invoke(std::forward<Func>(func), std::move(*this).error()) };
+        }
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<T, FuncResult>>
+    constexpr auto transform_error(Func&& func) const& -> Result
+    {
+        return *this  //
+                   ? Result{ value() }
+                   : Result{ error(std::invoke(std::forward<Func>(func), error())) };
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<T, FuncResult>>
+    constexpr auto transform_error(Func&& func) && -> Result
+    {
+        return *this  //
+                   ? Result{ std::move(*this).value() }
+                   : Result{ error(std::invoke(std::forward<Func>(func), std::move(*this).error())) };
+    }
+
 private:
     std::variant<value_storage, error_storage> m_storage;
 };
 
 template <class T, class E>
-struct result<T&, E> : result_details::has_value_mixin<T&, E>,
-                       result_details::and_then_mixin<T&, E>,
-                       result_details::transform_mixin<T&, E>,
-                       result_details::or_else_mixin<T&, E>,
-                       result_details::transform_error_mixin<T&, E>
+struct result<T&, E>
 {
     using value_type = T;
     using error_type = E;
@@ -732,16 +608,118 @@ struct result<T&, E> : result_details::has_value_mixin<T&, E>,
         return std::get<error_storage>(std::move(m_storage)).m_error;
     }
 
+    constexpr bool has_value() const noexcept
+    {
+        return static_cast<bool>(*this);
+    }
+
+    constexpr bool has_error() const noexcept
+    {
+        return !has_value();
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) const& -> Result
+    {
+        static_assert(
+            detail::is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), value())
+                   : detail::to_error<Result>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) && -> Result
+    {
+        static_assert(
+            detail::is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), std::move(*this).value())
+                   : detail::to_error<Result>(std::move(*this));
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = result<FuncResult, E>>
+    constexpr auto transform(Func&& func) const& -> Result
+    {
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), value())
+                   : detail::to_error<Result>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = result<FuncResult, E>>
+    constexpr auto transform(Func&& func) && -> Result
+    {
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func), value())
+                   : detail::to_error<Result>(std::move(*this));
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func, const E&>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<T, E>, FuncResult>>
+    constexpr auto or_else(Func&& func) const& -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ *this }
+                       : (std::invoke(std::forward<Func>(func), error()), Result{ *this });
+        }
+        else
+        {
+            static_assert(
+                detail::is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
+            return *this  //
+                       ? Result{ *this }
+                       : Result{ std::invoke(std::forward<Func>(func), error()) };
+        }
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func, const E&>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<T, E>, FuncResult>>
+    constexpr auto or_else(Func&& func) && -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : (std::invoke(std::forward<Func>(func), error()), Result{ std::move(*this) });
+        }
+        else
+        {
+            static_assert(
+                detail::is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : Result{ std::invoke(std::forward<Func>(func), std::move(*this).error()) };
+        }
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<T, FuncResult>>
+    constexpr auto transform_error(Func&& func) const& -> Result
+    {
+        return *this  //
+                   ? Result{ value() }
+                   : Result{ error(std::invoke(std::forward<Func>(func), error())) };
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<T, FuncResult>>
+    constexpr auto transform_error(Func&& func) && -> Result
+    {
+        return *this  //
+                   ? Result{ std::move(*this).value() }
+                   : Result{ error(std::invoke(std::forward<Func>(func), std::move(*this).error())) };
+    }
+
 private:
     std::variant<value_storage, error_storage> m_storage;
 };
 
 template <class E>
-struct result<void, E> : result_details::has_value_mixin<void, E>,
-                         result_details::and_then_mixin<void, E>,
-                         result_details::transform_mixin<void, E>,
-                         result_details::or_else_mixin<void, E>,
-                         result_details::transform_error_mixin<void, E>
+struct result<void, E>
 {
     using value_type = void;
     using error_type = E;
@@ -781,6 +759,112 @@ struct result<void, E> : result_details::has_value_mixin<void, E>,
     constexpr error_type&& error() &&
     {
         return *std::move(m_storage);
+    }
+
+    constexpr bool has_value() const noexcept
+    {
+        return static_cast<bool>(*this);
+    }
+
+    constexpr bool has_error() const noexcept
+    {
+        return !has_value();
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) const& -> Result
+    {
+        static_assert(
+            detail::is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func))
+                   : detail::to_error<Result>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) && -> Result
+    {
+        static_assert(
+            detail::is_result<FuncResult>::value, "and_then: function result type needs to be of `result<T, E>` type");
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func))
+                   : detail::to_error<Result>(std::move(*this));
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = result<FuncResult, E>>
+    constexpr auto transform(Func&& func) const& -> Result
+    {
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func))
+                   : detail::to_error<Result>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func>, class Result = result<FuncResult, E>>
+    constexpr auto transform(Func&& func) && -> Result
+    {
+        return *this  //
+                   ? detail::to_ok<Result>(std::forward<Func>(func))
+                   : detail::to_error<Result>(std::move(*this));
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func, const E&>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<void, E>, FuncResult>>
+    constexpr auto or_else(Func&& func) const& -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ *this }
+                       : (std::invoke(std::forward<Func>(func), error()), Result{ *this });
+        }
+        else
+        {
+            static_assert(
+                detail::is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
+            return *this  //
+                       ? Result{ *this }
+                       : Result{ std::invoke(std::forward<Func>(func), error()) };
+        }
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func, const E&>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, result<void, E>, FuncResult>>
+    constexpr auto or_else(Func&& func) && -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : (std::invoke(std::forward<Func>(func), error()), Result{ std::move(*this) });
+        }
+        else
+        {
+            static_assert(
+                detail::is_result<FuncResult>::value, "or_else: function result type needs to be of `result<T, E>` type");
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : Result{ std::invoke(std::forward<Func>(func), std::move(*this).error()) };
+        }
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<void, FuncResult>>
+    constexpr auto transform_error(Func&& func) const& -> Result
+    {
+        return *this  //
+                   ? Result{}
+                   : Result{ error(std::invoke(std::forward<Func>(func), error())) };
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const E&>, class Result = result<void, FuncResult>>
+    constexpr auto transform_error(Func&& func) && -> Result
+    {
+        return *this  //
+                   ? Result{}
+                   : Result{ error(std::invoke(std::forward<Func>(func), std::move(*this).error())) };
     }
 
 private:
@@ -851,31 +935,7 @@ auto try_create(Args&&... args) -> result<T, std::exception_ptr>
     }
 }
 
-constexpr inline auto to_exception_message = [](const std::exception_ptr& ptr) -> std::string
-{
-    try
-    {
-        std::rethrow_exception(ptr);
-    }
-    catch (const std::exception& ex)
-    {
-        return ex.what();
-    }
-    catch (const std::string& ex)
-    {
-        return ex;
-    }
-    catch (const char* ex)
-    {
-        return ex;
-    }
-    catch (...)
-    {
-        return "unknown exception";
-    }
-};
-
-namespace maybe_detail
+namespace detail
 {
 
 template <class T>
@@ -888,167 +948,10 @@ struct is_maybe<maybe<T>> : std::true_type
 {
 };
 
-template <class T>
-struct has_value_mixin
-{
-    constexpr bool has_value() const noexcept
-    {
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        return static_cast<bool>(self);
-    }
-};
+}  // namespace detail
 
 template <class T>
-struct and_then_mixin
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) const& -> Result
-    {
-        static_assert(is_maybe<FuncResult>::value, "and_then: function result type needs to be of `maybe<T>` type");
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        return self  //
-                   ? Result{ std::invoke(std::forward<Func>(func), self.value()) }
-                   : Result{};
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) && -> Result
-    {
-        static_assert(is_maybe<FuncResult>::value, "and_then: function result type needs to be of `maybe<T>` type");
-        auto& self = static_cast<maybe<T>&>(*this);
-        return self  //
-                   ? Result{ std::invoke(std::forward<Func>(func), std::move(self).value()) }
-                   : Result{};
-    }
-};
-
-template <class T>
-struct and_then_mixin<T&>
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = FuncResult>
-    constexpr auto and_then(Func&& func) const& -> Result
-    {
-        static_assert(is_maybe<FuncResult>::value, "and_then: function result type needs to be of `maybe<T>` type");
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        return self  //
-                   ? Result{ std::invoke(std::forward<Func>(func), self.value()) }
-                   : Result{};
-    }
-};
-
-template <class T>
-struct transform_mixin
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = maybe<FuncResult>>
-    constexpr auto transform(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        return self  //
-                   ? Result{ std::invoke(std::forward<Func>(func), self.value()) }
-                   : Result{};
-    }
-
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = maybe<FuncResult>>
-    constexpr auto transform(Func&& func) && -> Result
-    {
-        auto& self = static_cast<maybe<T>&>(*this);
-        return self  //
-                   ? Result{ std::invoke(std::forward<Func>(func), std::move(self).value()) }
-                   : Result{};
-    }
-};
-
-template <class T>
-struct transform_mixin<T&>
-{
-    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = maybe<FuncResult>>
-    constexpr auto transform(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        return self  //
-                   ? Result{ std::invoke(std::forward<Func>(func), self.value()) }
-                   : Result{};
-    }
-};
-
-template <class T>
-struct or_else_mixin
-{
-    template <
-        class Func,
-        class FuncResult = std::invoke_result_t<Func>,
-        class Result = std::conditional_t<std::is_void_v<FuncResult>, maybe<T>, FuncResult>>
-    constexpr auto or_else(Func&& func) const& -> Result
-    {
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        if constexpr (std::is_void_v<FuncResult>)
-        {
-            return self  //
-                       ? Result{ self }
-                       : (std::invoke(std::forward<Func>(func)), Result{ self });
-        }
-        else
-        {
-            static_assert(is_maybe<FuncResult>::value, "or_else: function result type needs to be of `maybe<T>` type");
-            return self  //
-                       ? Result{ self }
-                       : Result{ std::invoke(std::forward<Func>(func)) };
-        }
-    }
-
-    template <
-        class Func,
-        class FuncResult = std::invoke_result_t<Func>,
-        class Result = std::conditional_t<std::is_void_v<FuncResult>, maybe<T>, FuncResult>>
-    constexpr auto or_else(Func&& func) && -> Result
-    {
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        if constexpr (std::is_void_v<FuncResult>)
-        {
-            return self  //
-                       ? Result{ std::move(self) }
-                       : (std::invoke(std::forward<Func>(func)), Result{ std::move(self) });
-        }
-        else
-        {
-            static_assert(is_maybe<FuncResult>::value, "or_else: function result type needs to be of `maybe<T>` type");
-            return self  //
-                       ? Result{ std::move(self) }
-                       : Result{ std::invoke(std::forward<Func>(func)) };
-        }
-    }
-};
-
-template <class T>
-struct filter_mixin
-{
-    template <class Pred>
-    constexpr auto filter(Pred&& pred) const& -> maybe<T>
-    {
-        const auto& self = static_cast<const maybe<T>&>(*this);
-        return std::invoke(std::forward<Pred>(pred), self.value())  //
-                   ? maybe<T>{ self }
-                   : maybe<T>{};
-    }
-
-    template <class Pred>
-    constexpr auto filter(Pred&& pred) && -> maybe<T>
-    {
-        auto& self = static_cast<maybe<T>&>(*this);
-        return std::invoke(std::forward<Pred>(pred), self.value())  //
-                   ? maybe<T>{ std::move(self) }
-                   : maybe<T>{};
-    }
-};
-
-}  // namespace maybe_detail
-
-template <class T>
-struct maybe : maybe_detail::has_value_mixin<T>,
-               maybe_detail::and_then_mixin<T>,
-               maybe_detail::transform_mixin<T>,
-               maybe_detail::or_else_mixin<T>,
-               maybe_detail::filter_mixin<T>
+struct maybe
 {
     using value_type = T;
 
@@ -1108,16 +1011,111 @@ struct maybe : maybe_detail::has_value_mixin<T>,
         return *std::move(m_storage);
     }
 
+    constexpr bool has_value() const noexcept
+    {
+        return static_cast<bool>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) const& -> Result
+    {
+        static_assert(detail::is_maybe<FuncResult>::value, "and_then: function result type needs to be of `maybe<T>` type");
+        return *this  //
+                   ? Result{ std::invoke(std::forward<Func>(func), value()) }
+                   : Result{};
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) && -> Result
+    {
+        static_assert(detail::is_maybe<FuncResult>::value, "and_then: function result type needs to be of `maybe<T>` type");
+        return *this  //
+                   ? Result{ std::invoke(std::forward<Func>(func), std::move(*this).value()) }
+                   : Result{};
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, const T&>, class Result = maybe<FuncResult>>
+    constexpr auto transform(Func&& func) const& -> Result
+    {
+        return *this  //
+                   ? Result{ std::invoke(std::forward<Func>(func), value()) }
+                   : Result{};
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&&>, class Result = maybe<FuncResult>>
+    constexpr auto transform(Func&& func) && -> Result
+    {
+        return *this  //
+                   ? Result{ std::invoke(std::forward<Func>(func), std::move(*this).value()) }
+                   : Result{};
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, maybe<T>, FuncResult>>
+    constexpr auto or_else(Func&& func) const& -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ *this }
+                       : (std::invoke(std::forward<Func>(func)), Result{ *this });
+        }
+        else
+        {
+            static_assert(
+                detail::is_maybe<FuncResult>::value, "or_else: function result type needs to be of `maybe<T>` type");
+            return *this  //
+                       ? Result{ *this }
+                       : Result{ std::invoke(std::forward<Func>(func)) };
+        }
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, maybe<T>, FuncResult>>
+    constexpr auto or_else(Func&& func) && -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : (std::invoke(std::forward<Func>(func)), Result{ std::move(*this) });
+        }
+        else
+        {
+            static_assert(
+                detail::is_maybe<FuncResult>::value, "or_else: function result type needs to be of `maybe<T>` type");
+            return *this  //
+                       ? Result{ std::move(*this) }
+                       : Result{ std::invoke(std::forward<Func>(func)) };
+        }
+    }
+
+    template <class Pred>
+    constexpr auto filter(Pred&& pred) const& -> maybe<T>
+    {
+        return std::invoke(std::forward<Pred>(pred), value())  //
+                   ? maybe<T>{ *this }
+                   : maybe<T>{};
+    }
+
+    template <class Pred>
+    constexpr auto filter(Pred&& pred) && -> maybe<T>
+    {
+        return std::invoke(std::forward<Pred>(pred), value())  //
+                   ? maybe<T>{ std::move(*this) }
+                   : maybe<T>{};
+    }
+
 private:
     std::optional<value_type> m_storage;
 };
 
 template <class T>
-struct maybe<T&> : maybe_detail::has_value_mixin<T&>,
-                   maybe_detail::and_then_mixin<T&>,
-                   maybe_detail::transform_mixin<T&>,
-                   maybe_detail::or_else_mixin<T&>,
-                   maybe_detail::filter_mixin<T&>
+struct maybe<T&>
 {
     using value_type = T;
 
@@ -1150,6 +1148,58 @@ struct maybe<T&> : maybe_detail::has_value_mixin<T&>,
     constexpr value_type& value() const
     {
         return *m_storage;
+    }
+
+    constexpr bool has_value() const noexcept
+    {
+        return static_cast<bool>(*this);
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = FuncResult>
+    constexpr auto and_then(Func&& func) const -> Result
+    {
+        static_assert(detail::is_maybe<FuncResult>::value, "and_then: function result type needs to be of `maybe<T>` type");
+        return *this  //
+                   ? Result{ std::invoke(std::forward<Func>(func), value()) }
+                   : Result{};
+    }
+
+    template <class Func, class FuncResult = std::invoke_result_t<Func, T&>, class Result = maybe<FuncResult>>
+    constexpr auto transform(Func&& func) const -> Result
+    {
+        return *this  //
+                   ? Result{ std::invoke(std::forward<Func>(func), value()) }
+                   : Result{};
+    }
+
+    template <
+        class Func,
+        class FuncResult = std::invoke_result_t<Func>,
+        class Result = std::conditional_t<std::is_void_v<FuncResult>, maybe<T>, FuncResult>>
+    constexpr auto or_else(Func&& func) const -> Result
+    {
+        if constexpr (std::is_void_v<FuncResult>)
+        {
+            return *this  //
+                       ? Result{ *this }
+                       : (std::invoke(std::forward<Func>(func)), Result{ *this });
+        }
+        else
+        {
+            static_assert(
+                detail::is_maybe<FuncResult>::value, "or_else: function result type needs to be of `maybe<T>` type");
+            return *this  //
+                       ? Result{ *this }
+                       : Result{ std::invoke(std::forward<Func>(func)) };
+        }
+    }
+
+    template <class Pred>
+    constexpr auto filter(Pred&& pred) const -> maybe<T&>
+    {
+        return std::invoke(std::forward<Pred>(pred), value())  //
+                   ? maybe<T>{ *this }
+                   : maybe<T>{};
     }
 
 private:
@@ -1470,5 +1520,199 @@ struct identity
         return std::forward<T>(item);
     }
 };
+
+template <class... Args>
+struct formatter<std::tuple<Args...>>
+{
+    void format(std::ostream& os, const std::tuple<Args...>& item) const
+    {
+        format_to(os, "(");
+        std::apply(
+            [&os](const auto&... args)
+            {
+                auto n = 0u;
+                ((format_to(os, args) << (++n != sizeof...(args) ? ", " : "")), ...);
+            },
+            item);
+        format_to(os, ")");
+    }
+};
+
+template <class F, class S>
+struct formatter<std::pair<F, S>>
+{
+    void format(std::ostream& os, const std::pair<F, S>& item) const
+    {
+        format_to(os, "(", item.first, ", ", item.second, ")");
+    }
+};
+
+template <class... Pipes>
+struct pipe_t
+{
+    std::tuple<Pipes...> m_pipes;
+
+    constexpr pipe_t(std::tuple<Pipes...> pipes) : m_pipes{ std::move(pipes) }
+    {
+    }
+
+    constexpr pipe_t(Pipes... pipes) : pipe_t{ std::tuple<Pipes...>{ std::move(pipes)... } }
+    {
+    }
+
+private:
+    template <std::size_t I, class... Args>
+    constexpr auto invoke(Args&&... args) const -> decltype(std::invoke(std::get<I>(m_pipes), std::forward<Args>(args)...))
+    {
+        return std::invoke(std::get<I>(m_pipes), std::forward<Args>(args)...);
+    }
+
+    template <std::size_t I, class... Args, std::enable_if_t<(I + 1) == sizeof...(Pipes), int> = 0>
+    constexpr auto call(Args&&... args) const -> decltype(invoke<I>(std::forward<Args>(args)...))
+    {
+        return invoke<I>(std::forward<Args>(args)...);
+    }
+
+    template <std::size_t I, class... Args, std::enable_if_t<(I + 1) < sizeof...(Pipes), int> = 0>
+    constexpr auto call(Args&&... args) const -> decltype(call<I + 1>(invoke<I>(std::forward<Args>(args)...)))
+    {
+        return call<I + 1>(invoke<I>(std::forward<Args>(args)...));
+    }
+
+public:
+    template <class... Args>
+    constexpr auto operator()(Args&&... args) const -> decltype(call<0>(std::forward<Args>(args)...))
+    {
+        return call<0>(std::forward<Args>(args)...);
+    }
+};
+
+template <class... Pipes>
+struct formatter<pipe_t<Pipes...>>
+{
+    void format(std::ostream& os, const pipe_t<Pipes...>& item) const
+    {
+        format_to(os, "pipe(");
+        std::apply(
+            [&os](const auto&... args)
+            {
+                auto n = 0u;
+                ((format_to(os, args) << (++n != sizeof...(args) ? ", " : "")), ...);
+            },
+            item.m_pipes);
+        format_to(os, ")");
+    }
+};
+
+namespace detail
+{
+
+struct pipe_fn
+{
+private:
+    template <class Pipe>
+    constexpr auto to_tuple(Pipe pipe) const -> std::tuple<Pipe>
+    {
+        return std::tuple<Pipe>{ std::move(pipe) };
+    }
+
+    template <class... Pipes>
+    constexpr auto to_tuple(pipe_t<Pipes...> pipe) const -> std::tuple<Pipes...>
+    {
+        return pipe.m_pipes;
+    }
+
+    template <class... Pipes>
+    constexpr auto from_tuple(std::tuple<Pipes...> tuple) const -> pipe_t<Pipes...>
+    {
+        return pipe_t<Pipes...>{ std::move(tuple) };
+    }
+
+public:
+    template <class... Pipes>
+    constexpr auto operator()(Pipes&&... pipes) const
+        -> decltype(from_tuple(std::tuple_cat(to_tuple(std::forward<Pipes>(pipes))...)))
+    {
+        return from_tuple(std::tuple_cat(to_tuple(std::forward<Pipes>(pipes))...));
+    }
+};
+
+static constexpr inline struct do_all_fn
+{
+    template <class... Funcs>
+    struct impl
+    {
+        std::tuple<Funcs...> m_funcs;
+
+        template <class... Args>
+        void operator()(Args&&... args) const
+        {
+            call(std::index_sequence_for<Funcs...>{}, std::forward<Args>(args)...);
+        }
+
+        template <class... Args, std::size_t... I>
+        void call(std::index_sequence<I...>, Args&&... args) const
+        {
+            (std::invoke(std::get<I>(m_funcs), std::forward<Args>(args)...), ...);
+        }
+    };
+
+    template <class... Funcs>
+    auto operator()(Funcs&&... funcs) const -> impl<std::decay_t<Funcs>...>
+    {
+        return { std::forward_as_tuple(std::forward<Funcs>(funcs)...) };
+    }
+} do_all;
+
+static constexpr struct apply_fn
+{
+    template <class Func>
+    struct impl
+    {
+        Func m_func;
+
+        template <class T>
+        T& operator()(T& item) const
+        {
+            std::invoke(m_func, item);
+            return item;
+        }
+    };
+
+    template <class... Funcs>
+    auto operator()(Funcs&&... funcs) const -> pipe_t<impl<decltype(do_all(std::forward<Funcs>(funcs)...))>>
+    {
+        return { { do_all(std::forward<Funcs>(funcs)...) } };
+    }
+} apply;
+
+static constexpr inline struct with_fn
+{
+    template <class Func>
+    struct impl
+    {
+        Func m_func;
+
+        template <class T>
+        T operator()(T item) const
+        {
+            std::invoke(m_func, item);
+            return item;
+        }
+    };
+
+    template <class... Funcs>
+    auto operator()(Funcs&&... funcs) const -> pipe_t<impl<decltype(do_all(std::forward<Funcs>(funcs)...))>>
+    {
+        return { { do_all(std::forward<Funcs>(funcs)...) } };
+    }
+} with;
+
+}  // namespace detail
+
+static constexpr inline auto pipe = detail::pipe_fn{};
+using detail::apply;
+using detail::do_all;
+using detail::with;
 
 }  // namespace core
