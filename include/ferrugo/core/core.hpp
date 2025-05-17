@@ -1612,6 +1612,28 @@ public:
     }
 };
 
+template <class T>
+struct is_pipeline : std::false_type
+{
+};
+
+template <class... Args>
+struct is_pipeline<pipe_t<Args...>> : std::true_type
+{
+};
+
+template <class... L, class... R>
+constexpr auto operator|=(pipe_t<L...> lhs, pipe_t<R...> rhs) -> decltype(pipe(std::move(lhs), std::move(rhs)))
+{
+    return pipe(std::move(lhs), std::move(rhs));
+}
+
+template <class T, class... Pipes, std::enable_if_t<!is_pipeline<std::decay_t<T>>{}, int> = 0>
+constexpr auto operator|=(T&& item, const pipe_t<Pipes...>& p) -> decltype(p(std::forward<T>(item)))
+{
+    return p(std::forward<T>(item));
+}
+
 template <class... Pipes>
 struct formatter<pipe_t<Pipes...>>
 {
