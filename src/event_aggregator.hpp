@@ -1,5 +1,10 @@
 #pragma once
 
+#include <ferrugo/core/channel.hpp>
+#include <functional>
+#include <map>
+#include <typeindex>
+
 template <class Map, class Pred>
 void erase_if(Map& map, Pred pred)
 {

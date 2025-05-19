@@ -581,7 +581,7 @@ struct utc_time_t
                - div_floor((year - 1), 100)  //
                + div_floor((year - 1), 400)  //
                + div_floor(((367 * month) - 362), 12)
-               + ((month <= 2)  //
+               + ((month < 3)  //
                       ? 0
                       : leap_gregorian(year)  //
                             ? -1
@@ -603,12 +603,11 @@ struct utc_time_t
                           + year_index        //
                           + (cent != 4 && year_index != 4 ? 1 : 0);
         const auto yearday = wjd - gregorian_to_jd(year, 1, 1);
-        const auto leap_adj
-            = ((wjd < gregorian_to_jd(year, 3, 1))  //
-                   ? 0
-                   : (leap_gregorian(year)  //
-                          ? 1
-                          : 2));
+        const auto leap_adj = (wjd < gregorian_to_jd(year, 3, 1))  //
+                                  ? 0
+                                  : leap_gregorian(year)  //
+                                        ? 1
+                                        : 2;
         const auto month = div_floor((((yearday + leap_adj) * 12) + 373), 367);
         const auto day = (wjd - gregorian_to_jd(year, month, 1)) + 1;
 

@@ -911,7 +911,7 @@ std::ostream& operator<<(std::ostream& os, const result<T, E>& item)
 }
 
 template <class Func, class... Args>
-auto try_invoke(Func&& func, Args&&... args) -> result<std::invoke_result_t<Func, Args...>, std::exception_ptr>
+auto try_invoke(Func&& func, Args&&... args) noexcept -> result<std::invoke_result_t<Func, Args...>, std::exception_ptr>
 {
     try
     {
@@ -924,7 +924,7 @@ auto try_invoke(Func&& func, Args&&... args) -> result<std::invoke_result_t<Func
 }
 
 template <class T, class... Args>
-auto try_create(Args&&... args) -> result<T, std::exception_ptr>
+auto try_create(Args&&... args) noexcept -> result<T, std::exception_ptr>
 {
     try
     {
