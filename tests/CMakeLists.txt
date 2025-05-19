@@ -7,6 +7,7 @@ set(UNIT_TEST_SOURCE_LIST
     pipe.test.cpp
     functional.test.cpp
     subrange.test.cpp
+    chrono.test.cpp
 )
 
 Include(FetchContent)

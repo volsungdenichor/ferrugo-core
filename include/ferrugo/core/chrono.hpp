@@ -92,21 +92,21 @@ struct ratio_writer<units::weeks> : ratio_writer_base<'w'>
 };
 
 template <class Ratio, class T>
-struct duration_base
+struct duration_t
 {
     using value_type = T;
     value_type m_value;
 
-    constexpr duration_base() : m_value()
+    constexpr duration_t() : m_value()
     {
     }
 
-    constexpr explicit duration_base(value_type value) : m_value(value)
+    constexpr explicit duration_t(value_type value) : m_value(value)
     {
     }
 
     template <class OtherRatio, class U>
-    constexpr duration_base(duration_base<OtherRatio, U> other) : duration_base()
+    constexpr duration_t(duration_t<OtherRatio, U> other) : duration_t()
     {
         using ratio = std::ratio_divide<OtherRatio, Ratio>;
         m_value = static_cast<value_type>(ratio::num * other.m_value) / ratio::den;
@@ -117,7 +117,7 @@ struct duration_base
         return m_value;
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const duration_base& item)
+    friend std::ostream& operator<<(std::ostream& os, const duration_t& item)
     {
         return os << std::fixed << item.m_value << " " << ratio_writer<Ratio>{};
     }
@@ -127,15 +127,15 @@ template <class L, class R>
 using common_ratio = std::conditional_t<std::ratio_less_v<L, R>, L, R>;
 
 template <class Ratio, class T>
-constexpr auto operator+(duration_base<Ratio, T> item) -> duration_base<Ratio, T>
+constexpr auto operator+(duration_t<Ratio, T> item) -> duration_t<Ratio, T>
 {
     return item;
 }
 
 template <class Ratio, class T>
-constexpr auto operator-(duration_base<Ratio, T> item) -> duration_base<Ratio, T>
+constexpr auto operator-(duration_t<Ratio, T> item) -> duration_t<Ratio, T>
 {
-    return duration_base<Ratio, T>{ -item.m_value };
+    return duration_t<Ratio, T>{ -item.m_value };
 }
 
 template <
@@ -145,8 +145,8 @@ template <
     class R,
     class OutRatio = common_ratio<LRatio, RRatio>,
     class Out = std::invoke_result_t<std::plus<>, L, R>,
-    class Res = duration_base<OutRatio, Out>>
-constexpr auto operator+(duration_base<LRatio, L> lhs, duration_base<RRatio, R> rhs) -> Res
+    class Res = duration_t<OutRatio, Out>>
+constexpr auto operator+(duration_t<LRatio, L> lhs, duration_t<RRatio, R> rhs) -> Res
 {
     auto lt = Res{ lhs };
     auto rt = Res{ rhs };
@@ -160,8 +160,8 @@ template <
     class R,
     class OutRatio = common_ratio<LRatio, RRatio>,
     class Out = std::invoke_result_t<std::minus<>, L, R>,
-    class Res = duration_base<OutRatio, Out>>
-constexpr auto operator-(duration_base<LRatio, L> lhs, duration_base<RRatio, R> rhs) -> Res
+    class Res = duration_t<OutRatio, Out>>
+constexpr auto operator-(duration_t<LRatio, L> lhs, duration_t<RRatio, R> rhs) -> Res
 {
     auto lt = Res{ lhs };
     auto rt = Res{ rhs };
@@ -173,8 +173,8 @@ template <
     class RRatio,
     class R,
     class Out = std::invoke_result_t<std::multiplies<>, L, R>,
-    class Res = duration_base<RRatio, Out>>
-constexpr auto operator*(L lhs, duration_base<RRatio, R> rhs) -> Res
+    class Res = duration_t<RRatio, Out>>
+constexpr auto operator*(L lhs, duration_t<RRatio, R> rhs) -> Res
 {
     return Res{ lhs * rhs.m_value };
 }
@@ -184,8 +184,8 @@ template <
     class LRatio,
     class R,
     class Out = std::invoke_result_t<std::multiplies<>, L, R>,
-    class Res = duration_base<LRatio, Out>>
-constexpr auto operator*(duration_base<LRatio, L> lhs, R rhs) -> Res
+    class Res = duration_t<LRatio, Out>>
+constexpr auto operator*(duration_t<LRatio, L> lhs, R rhs) -> Res
 {
     return Res{ lhs.m_value * rhs };
 }
@@ -195,84 +195,81 @@ template <
     class LRatio,
     class R,
     class Out = std::invoke_result_t<std::divides<>, L, R>,
-    class Res = duration_base<LRatio, Out>>
-constexpr auto operator/(duration_base<LRatio, L> lhs, R rhs) -> Res
+    class Res = duration_t<LRatio, Out>>
+constexpr auto operator/(duration_t<LRatio, L> lhs, R rhs) -> Res
 {
     return Res{ lhs.m_value / rhs };
 }
 
 template <class LRatio, class L, class RRatio, class R, class Out = std::invoke_result_t<std::divides<>, L, R>>
-constexpr auto operator/(duration_base<LRatio, L> lhs, duration_base<RRatio, R> rhs) -> Out
+constexpr auto operator/(duration_t<LRatio, L> lhs, duration_t<RRatio, R> rhs) -> Out
 {
     using OutRatio = common_ratio<LRatio, RRatio>;
-    using Res = duration_base<OutRatio, Out>;
+    using Res = duration_t<OutRatio, Out>;
     auto lt = Res{ lhs };
     auto rt = Res{ rhs };
     return static_cast<Out>(lt.m_value) / rt.m_value;
 }
 
 template <class Ratio, class T>
-constexpr auto operator==(duration_base<Ratio, T> lhs, duration_base<Ratio, T> rhs) -> bool
+constexpr auto operator==(duration_t<Ratio, T> lhs, duration_t<Ratio, T> rhs) -> bool
 {
     return lhs.m_value == rhs.m_value;
 }
 
 template <class Ratio, class T>
-constexpr auto operator!=(duration_base<Ratio, T> lhs, duration_base<Ratio, T> rhs) -> bool
+constexpr auto operator!=(duration_t<Ratio, T> lhs, duration_t<Ratio, T> rhs) -> bool
 {
     return lhs.m_value != rhs.m_value;
 }
 
 template <class Ratio, class T>
-constexpr auto operator<(duration_base<Ratio, T> lhs, duration_base<Ratio, T> rhs) -> bool
+constexpr auto operator<(duration_t<Ratio, T> lhs, duration_t<Ratio, T> rhs) -> bool
 {
     return lhs.m_value < rhs.m_value;
 }
 
 template <class Ratio, class T>
-constexpr auto operator>(duration_base<Ratio, T> lhs, duration_base<Ratio, T> rhs) -> bool
+constexpr auto operator>(duration_t<Ratio, T> lhs, duration_t<Ratio, T> rhs) -> bool
 {
     return lhs.m_value > rhs.m_value;
 }
 
 template <class Ratio, class T>
-constexpr auto operator<=(duration_base<Ratio, T> lhs, duration_base<Ratio, T> rhs) -> bool
+constexpr auto operator<=(duration_t<Ratio, T> lhs, duration_t<Ratio, T> rhs) -> bool
 {
     return lhs.m_value <= rhs.m_value;
 }
 
 template <class Ratio, class T>
-constexpr auto operator>=(duration_base<Ratio, T> lhs, duration_base<Ratio, T> rhs) -> bool
+constexpr auto operator>=(duration_t<Ratio, T> lhs, duration_t<Ratio, T> rhs) -> bool
 {
     return lhs.m_value >= rhs.m_value;
 }
 
-template <class Ratio, class T>
-using duration = duration_base<Ratio, T>;
+template <class T = double>
+using nanoseconds_t = duration_t<units::nanoseconds, T>;
 
 template <class T = double>
-using nanoseconds_t = duration<units::nanoseconds, T>;
+using microseconds_t = duration_t<units::microseconds, T>;
 
 template <class T = double>
-using microseconds_t = duration<units::microseconds, T>;
+using milliseconds_t = duration_t<units::milliseconds, T>;
 
 template <class T = double>
-using milliseconds_t = duration<units::milliseconds, T>;
+using seconds_t = duration_t<units::seconds, T>;
 
 template <class T = double>
-using seconds_t = duration<units::seconds, T>;
+using minutes_t = duration_t<units::minutes, T>;
 
 template <class T = double>
-using minutes_t = duration<units::minutes, T>;
+using hours_t = duration_t<units::hours, T>;
 
 template <class T = double>
-using hours_t = duration<units::hours, T>;
+using days_t = duration_t<units::days, T>;
 
 template <class T = double>
-using days_t = duration<units::days, T>;
-
-template <class T = double>
-using weeks_t = duration<units::weeks, T>;
+using weeks_t = duration_t<units::weeks, T>;
 
 namespace literals
 {
@@ -521,6 +518,11 @@ struct utc_time_t
                       << "." << std::setfill('0') << std::setw(2) << item.month  //
                       << "." << std::setfill('0') << std::setw(2) << item.day;
         }
+
+        friend bool operator==(const date_type& lhs, const date_type& rhs)
+        {
+            return std::tie(lhs.year, lhs.month, lhs.day) == std::tie(rhs.year, rhs.month, rhs.day);
+        }
     };
 
     date_type date;
@@ -535,7 +537,7 @@ struct utc_time_t
 
     constexpr operator julian_date_t() const
     {
-        return julian_date_t{ days_t<double>{ to_time_point(date.year, date.month, date.day) } + time.get() };
+        return julian_date_t{ days_t<double>{ gregorian_to_jd(date.year, date.month, date.day) } + time.get() };
     }
 
     friend std::ostream& operator<<(std::ostream& os, const utc_time_t& item)
@@ -551,54 +553,66 @@ struct utc_time_t
 
     static constexpr inline double epoch = 1'721'425.5;
 
-    static constexpr bool divisible_by(int value, int div)
+    static constexpr int div_floor(double a, double b)
     {
-        return (value % div) == 0;
+        return std::floor(a / b);
     }
 
-    static constexpr auto div(double a, double b) -> std::pair<double, double>
+    static constexpr double mod(double a, double b)
     {
-        return { std::floor(a / b), std::fmod(a, b) };
+        return a - (b * div_floor(a, b));
     }
 
-    static constexpr bool is_leap(int year)
+    static constexpr auto div(double a, double b) -> std::tuple<int, double>
     {
-        return divisible_by(year, 4) && (divisible_by(year, 400) || !divisible_by(year, 100));
+        return { div_floor(a, b), mod(a, b) };
     }
 
-    static constexpr auto to_time_point(int year, int month, int day) -> double
+    static constexpr bool leap_gregorian(int year)
     {
-        return epoch - 1                         //
-               + 365 * (year - 1)                //
-               + std::floor((year - 1) / 4)      //
-               + -std::floor((year - 1) / 100)   //
-               + std::floor((year - 1) / 400)    //
-               + std::floor(                     //
-                   (((367 * month) - 362) / 12)  //
-                   + (month <= 2                 //
-                          ? 0                    //
-                          : is_leap(year)        //
-                                ? -1             //
-                                : -2)            //
-                   + day);
+        return ((year % 4) == 0) && (!(((year % 100) == 0) && ((year % 400) != 0)));
     }
 
-    static constexpr auto get_date(double js) -> utc_time_t::date_type
+    static constexpr auto gregorian_to_jd(int year, int month, int day) -> double
     {
-        const auto wjd = std::floor(js - 0.5) + 0.5;
+        return (epoch - 1)                   //
+               + (365 * (year - 1))          //
+               + div_floor((year - 1), 4)    //
+               - div_floor((year - 1), 100)  //
+               + div_floor((year - 1), 400)  //
+               + div_floor(((367 * month) - 362), 12)
+               + ((month <= 2)  //
+                      ? 0
+                      : leap_gregorian(year)  //
+                            ? -1
+                            : -2)
+               + day;
+    }
+
+    static constexpr auto get_date(double jd) -> utc_time_t::date_type
+    {
+        const auto wjd = std::floor(jd - 0.5) + 0.5;
         const auto depoch = wjd - epoch;
-        const auto [quadricent, dqc] = div(depoch, 146097.0);
-        const auto [cent, dcent] = div(dqc, 36524.0);
-        const auto [quad, dquad] = div(dcent, 1461.0);
-        const auto yindex = std::floor(dquad / 365);
-        const auto y = (int)((quadricent * 400) + (cent * 100) + (quad * 4) + yindex);
-        const auto year = cent != 4 && yindex != 4 ? y + 1 : y;
-        const auto yearday = wjd - to_time_point(year, 1, 1);
-        const auto leap_adj = wjd >= to_time_point(year, 3, 1) ? is_leap(year) ? 1 : 2 : 0;
-        const auto month = (int)std::floor((((yearday + leap_adj) * 12) + 373) / 367);
-        const auto day = (int)((wjd - to_time_point(year, month, 1)) + 1);
+        const auto [quadricent, d_quadricent] = div(depoch, 146'097);
+        const auto [cent, d_cent] = div(d_quadricent, 36'524);
+        const auto [quad, d_quad] = div(d_cent, 1'461);
+        const auto year_index = div_floor(d_quad, 365);
+        const auto year = (quadricent * 400)  //
+                          + (cent * 100)      //
+                          + (quad * 4)        //
+                          + year_index        //
+                          + (cent != 4 && year_index != 4 ? 1 : 0);
+        const auto yearday = wjd - gregorian_to_jd(year, 1, 1);
+        const auto leap_adj
+            = ((wjd < gregorian_to_jd(year, 3, 1))  //
+                   ? 0
+                   : (leap_gregorian(year)  //
+                          ? 1
+                          : 2));
+        const auto month = div_floor((((yearday + leap_adj) * 12) + 373), 367);
+        const auto day = (wjd - gregorian_to_jd(year, month, 1)) + 1;
 
-        return utc_time_t::date_type{ year + (month / 12), (month % 12), day };
+        return utc_time_t::date_type{ static_cast<int>(year), static_cast<int>(month), static_cast<int>(day) };
     }
 };
 

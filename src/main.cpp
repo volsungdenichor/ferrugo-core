@@ -39,7 +39,12 @@
 
 #include "edn.hpp"
 
-#define LAMBDA(...) [](auto&& it) -> decltype((__VA_ARGS__)) { return (__VA_ARGS__); }
+#define IT(...) [](auto&& it) -> decltype((__VA_ARGS__)) { return (__VA_ARGS__); }
+
+auto to_span(const edn::value_t& arg) -> edn::span<edn::value_t>
+{
+    return edn::span<edn::value_t>(&arg, 1);
+}
 
 auto print(edn::span<edn::value_t> args) -> edn::value_t
 {
@@ -61,15 +66,11 @@ auto debug(edn::span<edn::value_t> args) -> edn::value_t
     return {};
 }
 
-auto inc(edn::span<edn::value_t> args) -> edn::value_t
+auto odd_qm(edn::span<edn::value_t> args) -> edn::value_t
 {
     if (const auto v = args.at(0).if_integer())
     {
-        return *v + 1;
-    }
-    if (const auto v = args.at(0).if_floating_point())
-    {
-        return *v + 1.0;
+        return *v % 2 != 0;
     }
     return {};
 }
@@ -83,14 +84,43 @@ auto map(edn::span<edn::value_t> args) -> edn::value_t
         {
             for (const edn::value_t& item : *v)
             {
-                result.push_back((*callable)(edn::span<edn::value_t>(&item, 1)));
+                result.push_back((*callable)(to_span(item)));
             }
         }
         if (const auto v = args.at(1).if_list())
         {
             for (const edn::value_t& item : *v)
             {
-                result.push_back((*callable)(edn::span<edn::value_t>(&item, 1)));
+                result.push_back((*callable)(to_span(item)));
+            }
+        }
+    }
+    return result;
+}
+
+auto filter(edn::span<edn::value_t> args) -> edn::value_t
+{
+    edn::value_t::list_t result;
+    if (const auto callable = args.at(0).if_callable())
+    {
+        if (const auto v = args.at(1).if_vector())
+        {
+            for (const edn::value_t& item : *v)
+            {
+                if (callable->test(to_span(item)))
+                {
+                    result.push_back(item);
+                }
+            }
+        }
+        if (const auto v = args.at(1).if_list())
+        {
+            for (const edn::value_t& item : *v)
+            {
+                if (callable->test(to_span(item)))
+                {
+                    result.push_back(item);
+                }
             }
         }
     }
@@ -181,36 +211,18 @@ void run()
             result.insert(edn::value_t::symbol_t{ "<=" }, edn::value_t::callable_t{ binary_op<std::less_equal<>>{} });
             result.insert(edn::value_t::symbol_t{ ">=" }, edn::value_t::callable_t{ binary_op<std::greater_equal<>>{} });
 
-            result.insert(edn::value_t::symbol_t{ "inc" }, edn::value_t::callable_t{ &inc });
+            result.insert(edn::value_t::symbol_t{ "odd?" }, edn::value_t::callable_t{ &odd_qm });
             result.insert(edn::value_t::symbol_t{ "map" }, edn::value_t::callable_t{ &map });
+            result.insert(edn::value_t::symbol_t{ "filter" }, edn::value_t::callable_t{ &filter });
             return result;
         });
 
     const edn::value_t value = edn::parse(R"(
         (do
-            (def one "ONE")
             (def adam-mickiewicz {:name "Adam" :birth 1798 :death 1855})
-            (defn variadic [& args] (print "VARIADIC: " args))
-            (defn procedure [a b & tail]
-                (print "procedure: " "a=" a ", b=" b ", tail=" tail)
-                (print #{12 2 3 9 (+ 1 2)})
-                (cond
-                    (= a 1) one
-                    (= a 2) "TWO"
-                    (= a 3) "THREE"
-                    :else "NO IDEA"))
-            (let [x 1 y (* x 10)]
-
-                (procedure x y)
-            )
-                (variadic)
-                (variadic #{:A :B :C})
-                (variadic 0 {:a 3 :b 5.1})
-                (variadic 0 2 "A")
-                (variadic [0 2 "A"])
-            (print (procedure 3 4 10 2))
+            (def inc (fn [x] (+ x 1)))
             (debug adam-mickiewicz)
-            (print (map inc [1 2 3 11 12 13]))
+            (print (map (fn [x] [x (inc x)]) (filter odd? [5 10 15 20 25])))
         )
     )");
 
@@ -219,14 +231,7 @@ void run()
     std::cout << "> " << result << "\n";
 #endif
 
-    const auto p = core::pipe(LAMBDA(it + 3), LAMBDA(it * 10), core::format);
-    core::println(p);
-    core::println(p(3));
-
-    const auto f = core::with([](std::string& x) { x += "_"; }, [](std::string& x) { x = "!" + x; });
-    const std::string text = "ABC";
-    const std::string other = f(text);
-    core::println(other);
+    core::println(ferrugo::core::utc_time_t{ ferrugo::core::julian_date_t{} }.date);
 }
 
 int main()
