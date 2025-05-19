@@ -570,7 +570,7 @@ struct utc_time_t
 
     static constexpr bool leap_gregorian(int year)
     {
-        return ((year % 4) == 0) && (!(((year % 100) == 0) && ((year % 400) != 0)));
+        return year % 4 == 0 && !(year % 100 == 0 && year % 400 != 0);
     }
 
     static constexpr auto gregorian_to_jd(int year, int month, int day) -> double
