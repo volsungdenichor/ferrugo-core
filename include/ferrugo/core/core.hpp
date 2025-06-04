@@ -915,7 +915,15 @@ auto try_invoke(Func&& func, Args&&... args) noexcept -> result<std::invoke_resu
 {
     try
     {
-        return std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
+        if constexpr (!std::is_void_v<std::invoke_result_t<Func, Args...>>)
+        {
+            return std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
+        }
+        else
+        {
+            std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
+            return {};
+        }
     }
     catch (...)
     {
