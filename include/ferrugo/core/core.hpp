@@ -346,6 +346,12 @@ constexpr auto to_error(In&& in) -> Result
 using detail::error;
 using detail::error_wrapper;
 
+/*
+
+# result<T, E>
+
+*/
+
 template <class T, class E>
 struct result
 {
@@ -971,6 +977,18 @@ struct is_maybe<maybe<T>> : std::true_type
 
 }  // namespace detail
 
+/*
+
+# maybe
+
+*/
+
+/*
+
+## maybe<T>
+
+*/
+
 template <class T>
 struct maybe
 {
@@ -1293,6 +1311,12 @@ auto make_reverse(std::reverse_iterator<Iter> b, std::reverse_iterator<Iter> e) 
 
 }  // namespace detail
 
+/*
+
+# iterator_range<Iter>
+
+*/
+
 struct slice_t
 {
     maybe<std::ptrdiff_t> begin;
@@ -1580,6 +1604,12 @@ struct formatter<std::pair<F, S>>
     }
 };
 
+/*
+
+# pipe_t<Pipes...>
+
+*/
+
 template <class... Pipes>
 struct pipe_t
 {
@@ -1769,6 +1799,12 @@ static constexpr inline auto pipe = detail::pipe_fn{};
 using detail::apply;
 using detail::do_all;
 using detail::with;
+
+/*
+
+# sequence<T>
+
+*/
 
 template <class T>
 using iteration_result_t = maybe<T>;
