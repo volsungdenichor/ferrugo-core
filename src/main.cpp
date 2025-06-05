@@ -1,6 +1,8 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <cuchar>
 #include <deque>
 #include <ferrugo/core/channel.hpp>
 #include <ferrugo/core/chrono.hpp>
@@ -14,6 +16,7 @@
 #include <ferrugo/core/rational.hpp>
 #include <ferrugo/core/sequence.hpp>
 #include <ferrugo/core/std_ostream.hpp>
+#include <ferrugo/core/string.hpp>
 #include <ferrugo/core/type_name.hpp>
 #include <forward_list>
 #include <fstream>
@@ -33,24 +36,25 @@
 #include <variant>
 #include <vector>
 
-#define IT(...) [](auto&& it) -> decltype((__VA_ARGS__)) { return (__VA_ARGS__); }
+void print(ferrugo::core::string_view txt)
+{
+    std::cout << "'" << txt << "'"
+              << "\n";
+    std::cout << ferrugo::core::string{ txt } << "\n";
+    std::cout << txt.get(-2) << "\n";
+}
 
 void run()
 {
-    core::println(ferrugo::core::utc_time_t{ ferrugo::core::julian_date_t{} }.date);
+    print(
+        ferrugo::core::glyph{ "👍" } + ferrugo::core::string{ "Οὐχὶ ταὐτὰ παρίσταταί μοι γιγνώσκειν, ὦ ἄνδρες ᾿Αθηναῖοι," }
+        + ferrugo::core::glyph{ "💚" });
 }
 
 int main()
 {
-    try
+    if (const auto result = core::try_invoke(&run); result.has_error())
     {
-        run();
-    }
-    catch (...)
-    {
-        std::cout << "\n"
-                  << "Error:"
-                  << "\n"
-                  << ferrugo::core::exception_proxy{};
+        core::format_to(std::cerr, result.error(), "\n");
     }
 }

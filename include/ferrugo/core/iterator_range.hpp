@@ -42,8 +42,9 @@ auto make_reverse(std::reverse_iterator<Iter> b, std::reverse_iterator<Iter> e) 
 
 struct slice_t
 {
-    maybe<std::ptrdiff_t> begin;
-    maybe<std::ptrdiff_t> end;
+    using difference_type = std::ptrdiff_t;
+    maybe<difference_type> begin;
+    maybe<difference_type> end;
 };
 
 template <class Iter>
@@ -77,7 +78,7 @@ public:
     {
     }
 
-    template <class Range, class = iterator_t<Range>>
+    template <class Range, class It = iterator_t<Range>, require<std::is_constructible_v<iterator, It>> = 0>
     iterator_range(Range&& range) : iterator_range(std::begin(range), std::end(range))
     {
     }
@@ -119,7 +120,7 @@ public:
     template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto size() const -> difference_type
     {
-        return std::distance(begin(), end());
+        return ssize();
     }
 
     auto front() const -> reference
@@ -250,16 +251,30 @@ public:
     template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto slice(const slice_t& info) const -> iterator_range
     {
-        static const auto adjust = [](difference_type index, size_type size) -> size_type {  //
-            return std::clamp<size_type>(index >= 0 ? index : index + size, 0, size);
-        };
         const size_type s = size();
         const size_type b = info.begin ? adjust(*info.begin, s) : size_type{ 0 };
         const size_type e = info.end ? adjust(*info.end, s) : s;
         return iterator_range{ begin() + b, std::max(size_type{ 0 }, e - b) };
     }
 
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
+    auto get(slice_t::difference_type index) const -> reference
+    {
+        return slice(slice_t{ index, {} }).front();
+    }
+
+    template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
+    auto maybe_get(slice_t::difference_type index) const -> maybe_reference
+    {
+        return slice(slice_t{ index, {} }).maybe_front();
+    }
+
 private:
+    static auto adjust(difference_type index, size_type size) -> size_type
+    {
+        return std::clamp<size_type>(index >= 0 ? index : index + size, 0, size);
+    }
+
     template <class It = iterator, require<is_random_access_iterator<It>::value> = 0>
     auto advance(difference_type n) const -> iterator
     {
