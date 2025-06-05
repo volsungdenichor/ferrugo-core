@@ -4,6 +4,7 @@
 #include <cuchar>
 #include <ferrugo/core/iterator_range.hpp>
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace ferrugo
@@ -11,31 +12,42 @@ namespace ferrugo
 namespace core
 {
 
-inline void decode(ferrugo::core::span<char> txt, const std::function<void(std::size_t n, char32_t)>& func)
+inline auto read(span<char> txt) -> std::optional<std::pair<char32_t, span<char>>>
 {
     std::setlocale(LC_ALL, "en_US.utf8");
-    char32_t c32 = {};
-    const char* ptr = txt.begin();
-    const char* end = txt.end();
     std::mbstate_t state{};
-    std::size_t n = 0;
-    while (std::size_t rc = std::mbrtoc32(&c32, ptr, end - ptr, &state))
+    char32_t c32 = {};
+    std::size_t rc = std::mbrtoc32(&c32, txt.begin(), txt.size(), &state);
+    if (rc == std::size_t(-3))
     {
-        if (rc == std::size_t(-3))
+        throw std::runtime_error{ "u32_to_mb: error in conversion" };
+    }
+    if (rc == std::size_t(-1))
+    {
+        return {};
+    }
+    if (rc == std::size_t(-2))
+    {
+        return {};
+    }
+    return std::pair{ c32, txt.drop(rc) };
+}
+
+inline void decode(span<char> txt, const std::function<void(std::size_t n, char32_t)>& func)
+{
+    std::size_t n = 0;
+    while (true)
+    {
+        if (auto maybe_res = read(txt))
         {
-            throw std::runtime_error{ "u32_to_mb: error in conversion" };
+            const auto [ch, remainder] = *maybe_res;
+            func(n++, ch);
+            txt = remainder;
         }
-        if (rc == std::size_t(-1))
+        else
         {
             break;
         }
-        if (rc == std::size_t(-2))
-        {
-            break;
-        }
-        func(n, c32);
-        ptr += rc;
-        n += 1;
     }
 }
 
@@ -61,17 +73,17 @@ struct glyph
     {
     }
 
-    explicit glyph(std::string_view txt)
+    explicit glyph(std::string_view txt) : m_data()
     {
         decode(
             txt,
-            [&](std::size_t n, char32_t c)
+            [&](std::size_t n, char32_t ch)
             {
                 if (n > 0)
                 {
                     throw std::runtime_error{ "too many characters to create a single glyph" };
                 }
-                m_data = c;
+                m_data = ch;
             });
     }
 
@@ -90,8 +102,19 @@ struct glyph
 
     friend std::ostream& operator<<(std::ostream& os, const glyph& item)
     {
-        const auto [size, data] = encode(item.m_data);
-        std::copy(data.data(), data.data() + size, std::ostream_iterator<char>{ os });
+        std::array<char, 4> data;
+        const span<char> v = std::invoke(
+            [&]() -> span<char>
+            {
+                auto state = std::mbstate_t{};
+                const std::uint8_t size = std::c32rtomb(data.data(), item.m_data, &state);
+                if (size == std::size_t(-1))
+                {
+                    throw std::runtime_error{ "u32_to_mb: error in conversion" };
+                }
+                return span<char>{ data.data(), data.data() + size };
+            });
+        std::copy(v.begin(), v.end(), std::ostream_iterator<char>{ os });
         return os;
     }
 
@@ -126,9 +149,9 @@ struct glyph
     }
 };
 
-struct string_view : public ferrugo::core::span<glyph>
+struct string_view : public span<glyph>
 {
-    using base_t = ferrugo::core::span<glyph>;
+    using base_t = span<glyph>;
 
     using base_t::base_t;
 

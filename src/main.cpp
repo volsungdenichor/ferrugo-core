@@ -41,7 +41,7 @@ void print(ferrugo::core::string_view txt)
     std::cout << "'" << txt << "'"
               << "\n";
     std::cout << ferrugo::core::string{ txt } << "\n";
-    std::cout << txt.get(-2) << "\n";
+    std::cout << txt.get(-1) << "\n";
 }
 
 void run()
