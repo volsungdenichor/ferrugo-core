@@ -1,8 +1,11 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
+#include <cuchar>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <numeric>
 #include <optional>
 #include <sstream>
@@ -17,8 +20,17 @@
 
 #endif  // __GNUG__
 
-namespace core
+namespace zx
 {
+
+using u8 = std::uint8_t;
+using i8 = std::int8_t;
+using u16 = std::uint16_t;
+using i16 = std::int16_t;
+using u32 = std::uint32_t;
+using i32 = std::int32_t;
+using u64 = std::uint64_t;
+using i64 = std::int64_t;
 
 namespace detail
 {
@@ -3212,6 +3224,9 @@ struct get_lines_fn
 
 }  // namespace detail
 
+namespace seq
+{
+
 static constexpr inline auto iota = detail::iota_fn{};
 static constexpr inline auto range = detail::range_fn{};
 static constexpr inline auto unfold = detail::unfold_fn{};
@@ -3226,10 +3241,101 @@ static constexpr inline auto init = detail::init_fn{};
 static constexpr inline auto init_infinite = detail::init_infinite_fn{};
 static constexpr inline auto get_lines = detail::get_lines_fn{};
 
+}  // namespace seq
+
 template <class L, class R>
 auto operator+(const sequence<L>& lhs, const sequence<R>& rhs) -> sequence<std::common_type_t<L, R>>
 {
     return concat(lhs, rhs);
 }
 
-}  // namespace core
+struct glyph
+{
+    char32_t m_data;
+
+    friend std::ostream& operator<<(std::ostream& os, const glyph& item)
+    {
+        std::array<char, 4> data;
+        const zx::span<char> v = std::invoke(
+            [&]() -> zx::span<char>
+            {
+                auto state = std::mbstate_t{};
+                const std::uint8_t size = std::c32rtomb(data.data(), item.m_data, &state);
+                if (size == std::size_t(-1))
+                {
+                    throw std::runtime_error{ "u32_to_mb: error in conversion" };
+                }
+                return zx::span<char>{ data.data(), data.data() + size };
+            });
+        std::copy(v.begin(), v.end(), std::ostream_iterator<char>{ os });
+        return os;
+    }
+
+    static auto read(std::string_view txt) -> zx::maybe<std::pair<glyph, std::string_view>>
+    {
+        std::setlocale(LC_ALL, "en_US.utf8");
+        std::mbstate_t state{};
+        char32_t c32 = {};
+        std::size_t rc = std::mbrtoc32(&c32, txt.begin(), txt.size(), &state);
+        if (rc == std::size_t(-3))
+        {
+            throw std::runtime_error{ "u32_to_mb: error in conversion" };
+        }
+        if (rc == std::size_t(-1))
+        {
+            return {};
+        }
+        if (rc == std::size_t(-2))
+        {
+            return {};
+        }
+        txt.remove_prefix(rc);
+        return std::pair{ glyph{ c32 }, txt };
+    }
+
+    static auto to_glyphs(std::string_view text) -> zx::sequence<glyph>
+    {
+        return zx::sequence<glyph>{ [=]() mutable -> zx::iteration_result_t<glyph>
+                                    {
+                                        if (auto n = read(text))
+                                        {
+                                            const auto [ch, remainder] = *n;
+                                            text = remainder;
+                                            return ch;
+                                        }
+                                        return {};
+                                    } };
+    }
+
+    friend bool operator==(const glyph& lhs, const glyph& rhs)
+    {
+        return lhs.m_data == rhs.m_data;
+    }
+
+    friend bool operator!=(const glyph& lhs, const glyph& rhs)
+    {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator<(const glyph& lhs, const glyph& rhs)
+    {
+        return lhs.m_data < rhs.m_data;
+    }
+
+    friend bool operator>(const glyph& lhs, const glyph& rhs)
+    {
+        return rhs < lhs;
+    }
+
+    friend bool operator<=(const glyph& lhs, const glyph& rhs)
+    {
+        return !(lhs > rhs);
+    }
+
+    friend bool operator>=(const glyph& lhs, const glyph& rhs)
+    {
+        return !(lhs < rhs);
+    }
+};
+
+}  // namespace zx

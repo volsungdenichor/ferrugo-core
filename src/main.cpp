@@ -6,7 +6,6 @@
 #include <deque>
 #include <ferrugo/core/channel.hpp>
 #include <ferrugo/core/chrono.hpp>
-#include <ferrugo/core/core.hpp>
 #include <ferrugo/core/dimensions.hpp>
 #include <ferrugo/core/error_handling.hpp>
 #include <ferrugo/core/functional.hpp>
@@ -18,6 +17,7 @@
 #include <ferrugo/core/std_ostream.hpp>
 #include <ferrugo/core/string.hpp>
 #include <ferrugo/core/type_name.hpp>
+#include <ferrugo/core/zx.hpp>
 #include <forward_list>
 #include <fstream>
 #include <functional>
@@ -36,25 +36,25 @@
 #include <variant>
 #include <vector>
 
-void print(ferrugo::core::string_view txt)
-{
-    std::cout << "'" << txt << "'"
-              << "\n";
-    std::cout << ferrugo::core::string{ txt } << "\n";
-    std::cout << txt.get(-1) << "\n";
-}
-
 void run()
 {
-    print(
-        ferrugo::core::glyph{ "👍" } + ferrugo::core::string{ "Οὐχὶ ταὐτὰ παρίσταταί μοι γιγνώσκειν, ὦ ἄνδρες ᾿Αθηναῖοι," }
-        + ferrugo::core::glyph{ "💚" });
+    const auto x = std::string{ "👍" } + std::string{ "Οὐχὶ ταὐτὰ παρίσταταί μοι γιγνώσκειν, ὦ ἄνδρες ᾿Αθηναῖοι," }
+                   + std::string{ "💚" };
+    for (auto g : ferrugo::core::glyph::to_glyphs(x).take(4))
+    {
+        std::cout << g << "\n";
+    }
 }
 
-int main()
+int main(int argc, char* argv[])
 {
-    if (const auto result = core::try_invoke(&run); result.has_error())
+    const std::vector<std::string> args = zx::span<char*>{ argv, argc };
+    for (const auto a : args)
     {
-        core::format_to(std::cerr, result.error(), "\n");
+        std::cout << a << "\n";
+    }
+    if (const auto result = zx::try_invoke(&run); result.has_error())
+    {
+        zx::format_to(std::cerr, result.error(), "\n");
     }
 }

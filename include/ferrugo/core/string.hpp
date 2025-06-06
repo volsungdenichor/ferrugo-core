@@ -2,109 +2,23 @@
 
 #include <cstdint>
 #include <cuchar>
-#include <ferrugo/core/iterator_range.hpp>
-#include <functional>
-#include <optional>
-#include <vector>
+#include <ferrugo/core/zx.hpp>
+#include <iterator>
 
 namespace ferrugo
 {
 namespace core
 {
 
-inline auto read(span<char> txt) -> std::optional<std::pair<char32_t, span<char>>>
-{
-    std::setlocale(LC_ALL, "en_US.utf8");
-    std::mbstate_t state{};
-    char32_t c32 = {};
-    std::size_t rc = std::mbrtoc32(&c32, txt.begin(), txt.size(), &state);
-    if (rc == std::size_t(-3))
-    {
-        throw std::runtime_error{ "u32_to_mb: error in conversion" };
-    }
-    if (rc == std::size_t(-1))
-    {
-        return {};
-    }
-    if (rc == std::size_t(-2))
-    {
-        return {};
-    }
-    return std::pair{ c32, txt.drop(rc) };
-}
-
-inline void decode(span<char> txt, const std::function<void(std::size_t n, char32_t)>& func)
-{
-    std::size_t n = 0;
-    while (true)
-    {
-        if (auto maybe_res = read(txt))
-        {
-            const auto [ch, remainder] = *maybe_res;
-            func(n++, ch);
-            txt = remainder;
-        }
-        else
-        {
-            break;
-        }
-    }
-}
-
-inline auto encode(char32_t ch) -> std::pair<std::uint8_t, std::array<char, 4>>
-{
-    std::array<char, 4> data;
-    auto state = std::mbstate_t{};
-    const std::uint8_t size = std::c32rtomb(data.data(), ch, &state);
-    if (size == std::size_t(-1))
-    {
-        throw std::runtime_error{ "u32_to_mb: error in conversion" };
-    }
-    return { size, std::move(data) };
-}
-
 struct glyph
 {
     char32_t m_data;
 
-    glyph() = default;
-
-    explicit glyph(char32_t data) : m_data(data)
-    {
-    }
-
-    explicit glyph(std::string_view txt) : m_data()
-    {
-        decode(
-            txt,
-            [&](std::size_t n, char32_t ch)
-            {
-                if (n > 0)
-                {
-                    throw std::runtime_error{ "too many characters to create a single glyph" };
-                }
-                m_data = ch;
-            });
-    }
-
-    glyph(char ch) : glyph(std::string_view{ &ch, 1 })
-    {
-    }
-
-    glyph(const glyph&) = default;
-    glyph(glyph&&) noexcept = default;
-
-    glyph& operator=(glyph other)
-    {
-        std::swap(m_data, other.m_data);
-        return *this;
-    }
-
     friend std::ostream& operator<<(std::ostream& os, const glyph& item)
     {
         std::array<char, 4> data;
-        const span<char> v = std::invoke(
-            [&]() -> span<char>
+        const zx::span<char> v = std::invoke(
+            [&]() -> zx::span<char>
             {
                 auto state = std::mbstate_t{};
                 const std::uint8_t size = std::c32rtomb(data.data(), item.m_data, &state);
@@ -112,10 +26,46 @@ struct glyph
                 {
                     throw std::runtime_error{ "u32_to_mb: error in conversion" };
                 }
-                return span<char>{ data.data(), data.data() + size };
+                return zx::span<char>{ data.data(), data.data() + size };
             });
         std::copy(v.begin(), v.end(), std::ostream_iterator<char>{ os });
         return os;
+    }
+
+    static auto read(std::string_view txt) -> zx::maybe<std::pair<glyph, std::string_view>>
+    {
+        std::setlocale(LC_ALL, "en_US.utf8");
+        std::mbstate_t state{};
+        char32_t c32 = {};
+        std::size_t rc = std::mbrtoc32(&c32, txt.begin(), txt.size(), &state);
+        if (rc == std::size_t(-3))
+        {
+            throw std::runtime_error{ "u32_to_mb: error in conversion" };
+        }
+        if (rc == std::size_t(-1))
+        {
+            return {};
+        }
+        if (rc == std::size_t(-2))
+        {
+            return {};
+        }
+        txt.remove_prefix(rc);
+        return std::pair{ glyph{ c32 }, txt };
+    }
+
+    static auto to_glyphs(std::string_view text) -> zx::sequence<glyph>
+    {
+        return zx::sequence<glyph>{ [=]() mutable -> zx::iteration_result_t<glyph>
+                                    {
+                                        if (auto n = read(text))
+                                        {
+                                            const auto [ch, remainder] = *n;
+                                            text = remainder;
+                                            return ch;
+                                        }
+                                        return {};
+                                    } };
     }
 
     friend bool operator==(const glyph& lhs, const glyph& rhs)
@@ -146,92 +96,6 @@ struct glyph
     friend bool operator>=(const glyph& lhs, const glyph& rhs)
     {
         return !(lhs < rhs);
-    }
-};
-
-struct string_view : public span<glyph>
-{
-    using base_t = span<glyph>;
-
-    using base_t::base_t;
-
-    friend std::ostream& operator<<(std::ostream& os, const string_view& item)
-    {
-        std::copy(item.begin(), item.end(), std::ostream_iterator<glyph>{ os });
-        return os;
-    }
-};
-
-struct string : public std::vector<glyph>
-{
-    using base_t = std::vector<glyph>;
-
-    using base_t::empty;
-    using base_t::size;
-    using base_t::operator[];
-    using base_t::at;
-    using base_t::begin;
-    using base_t::cbegin;
-    using base_t::cend;
-    using base_t::end;
-    using base_t::push_back;
-    using base_t::rbegin;
-    using base_t::rend;
-
-    string() = default;
-
-    string(std::string_view txt)
-    {
-        decode(txt, [&](std::size_t, char32_t c) { this->push_back(glyph{ c }); });
-    }
-
-    template <class Iter>
-    string(Iter b, Iter e) : base_t(b, e)
-    {
-    }
-
-    operator string_view() const
-    {
-        return string_view{ this->data(), this->data() + this->size() };
-    }
-
-    string(std::size_t n, glyph g)
-    {
-        this->resize(n);
-        std::fill(this->begin(), this->end(), g);
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const string& item)
-    {
-        std::copy(std::begin(item), std::end(item), std::ostream_iterator<glyph>{ os });
-        return os;
-    }
-
-    friend string& operator+=(string& lhs, const string& rhs)
-    {
-        lhs.insert(lhs.end(), rhs.begin(), rhs.end());
-        return lhs;
-    }
-
-    friend string operator+(string lhs, const string& rhs)
-    {
-        return lhs += rhs;
-    }
-
-    friend string& operator+=(string& lhs, const glyph& rhs)
-    {
-        lhs.push_back(rhs);
-        return lhs;
-    }
-
-    friend string operator+(string lhs, const glyph& rhs)
-    {
-        return lhs += rhs;
-    }
-
-    friend string operator+(const glyph& lhs, const string& rhs)
-    {
-        return string(1, lhs) + rhs;
     }
 };
 
