@@ -43,6 +43,12 @@ public:
                          static_cast<value_type>(std::pow(10, precision)) };
     }
 
+    template <int Precision, class F, class = std::enable_if_t<std::is_floating_point_v<F>>>
+    static constexpr auto from_float(F v) -> rational
+    {
+        return from_float(v, Precision);
+    }
+
     template <class F, class = std::enable_if_t<std::is_floating_point_v<F>>>
     operator F() const
     {
@@ -79,7 +85,9 @@ public:
 
     friend std::ostream& operator<<(std::ostream& os, const rational& item)
     {
-        return os << item.m_n << "/" << item.m_d;
+        return item.denominator() != 1  //
+                   ? os << item.numerator() << "/" << item.denominator()
+                   : os << item.numerator();
     }
 
     constexpr auto reciprocal() const -> rational
@@ -99,10 +107,8 @@ public:
 
     friend constexpr auto operator+(rational lhs, rational rhs) -> rational
     {
-        return lhs.denominator() == rhs.denominator()
-                   ? rational{ lhs.numerator() + rhs.numerator(), lhs.denominator() }
-                   : rational{ lhs.numerator() * rhs.denominator() + rhs.numerator() * lhs.denominator(),
-                               lhs.denominator() * rhs.denominator() };
+        return rational{ lhs.numerator() * rhs.denominator() + rhs.numerator() * lhs.denominator(),
+                         lhs.denominator() * rhs.denominator() };
     }
 
     friend auto operator+=(rational& lhs, rational rhs) -> rational&
