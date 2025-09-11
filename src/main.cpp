@@ -35,283 +35,232 @@
 #include <variant>
 #include <vector>
 
-template <std::size_t D>
-std::array<std::size_t, D> get_stride(const std::array<std::size_t, D>& sizes)
+template <class T>
+struct pointer_proxy
 {
-    std::array<std::size_t, D> result;
-    result[0] = 1;
-    for (std::size_t d = 1; d < D; ++d)
+    T item;
+
+    T* operator->()
     {
-        result[d] = result[d - 1] * sizes[d];
-    }
-    std::reverse(result.begin(), result.end());
-    return result;
-}
-
-template <class T, std::size_t... Sizes>
-struct value_t
-{
-    using value_type = T;
-    static constexpr std::size_t dimension = sizeof...(Sizes);
-    static constexpr std::array<std::size_t, dimension> sizes = { Sizes... };
-    static const inline std::array<std::size_t, dimension> strides = get_stride(sizes);
-    static constexpr std::size_t volume = (Sizes * ...);
-
-    using location_type = value_t<std::ptrdiff_t, dimension>;
-    using shape_type = value_t<std::ptrdiff_t, dimension>;
-    using data_type = std::array<value_type, volume>;
-    data_type m_data;
-
-    constexpr value_t() : m_data{}
-    {
-    }
-
-    constexpr value_t(const value_t&) = default;
-    constexpr value_t(value_t&&) noexcept = default;
-
-    template <class... Tail>
-    constexpr value_t(value_type head, Tail&&... tail) : m_data{ head, std::forward<Tail>(tail)... }
-    {
-        static_assert(sizeof...(tail) + 1 == volume, "all values required");
-    }
-
-    constexpr std::size_t get_offset(const location_type& loc) const
-    {
-        std::size_t result = 0;
-        for (std::size_t d = 0; d < dimension; ++d)
-        {
-            result += strides[d] * loc.m_data[d];
-        }
-        return result;
-    }
-
-    constexpr const value_type& operator[](const location_type& loc) const
-    {
-        return m_data.at(get_offset(loc));
-    }
-
-    constexpr value_type& operator[](const location_type& loc)
-    {
-        return m_data.at(get_offset(loc));
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const value_t& item)
-    {
-        os << "[" << ferrugo::core::delimit(item.m_data, ", ") << "]";
-        return os;
-    }
-
-    constexpr shape_type shape() const
-    {
-        return { Sizes... };
+        return std::addressof(item);
     }
 };
 
 template <class T>
-struct is_value : std::false_type
+struct collection_ref
 {
-};
-
-template <class T, std::size_t... Sizes>
-struct is_value<value_t<T, Sizes...>> : std::true_type
-{
-};
-
-template <class To, class UnaryFunc>
-constexpr void map(To& to, UnaryFunc func)
-{
-    std::transform(to.begin(), to.end(), to.begin(), std::ref(func));
-}
-
-template <class To, class From, class UnaryFunc>
-constexpr void map(To& to, const From& from, UnaryFunc func)
-{
-    std::transform(from.begin(), from.end(), to.begin(), std::ref(func));
-}
-
-template <class To, class L, class R, class BinaryFunc>
-constexpr void map(To& to, const L& lhs, const R& rhs, BinaryFunc func)
-{
-    std::transform(lhs.begin(), lhs.end(), rhs.begin(), to.begin(), std::ref(func));
-}
-
-template <class T, std::size_t... Sizes>
-constexpr auto operator+(value_t<T, Sizes...> item) -> value_t<T, Sizes...>
-{
-    return item;
-}
-
-template <class T, std::size_t... Sizes>
-constexpr auto operator-(value_t<T, Sizes...> item) -> value_t<T, Sizes...>
-{
-    map(item.m_data, std::negate<>{});
-    return item;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t... Sizes,
-    class O = std::invoke_result_t<std::plus<>, L, R>,
-    class Out = value_t<O, Sizes...>>
-constexpr auto operator+(value_t<L, Sizes...> lhs, value_t<R, Sizes...> rhs) -> Out
-{
-    Out out{};
-    map(out.m_data, lhs.m_data, rhs.m_data, std::plus<>{});
-    return out;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t... Sizes,
-    class O = std::invoke_result_t<std::minus<>, L, R>,
-    class Out = value_t<O, Sizes...>>
-constexpr auto operator-(value_t<L, Sizes...> lhs, value_t<R, Sizes...> rhs) -> Out
-{
-    Out out{};
-    map(out.m_data, lhs.m_data, rhs.m_data, std::minus<>{});
-    return out;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t... Sizes,
-    class = std::enable_if_t<!is_value<L>::value>,
-    class O = std::invoke_result_t<std::multiplies<>, L, R>,
-    class Out = value_t<O, Sizes...>>
-constexpr auto operator*(L lhs, value_t<R, Sizes...> rhs) -> Out
-{
-    Out out{};
-    map(out.m_data, rhs.m_data, std::bind(std::multiplies<>{}, lhs, std::placeholders::_1));
-    return out;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t... Sizes,
-    class = std::enable_if_t<!is_value<R>::value>,
-    class O = std::invoke_result_t<std::multiplies<>, L, R>,
-    class Out = value_t<O, Sizes...>>
-constexpr auto operator*(value_t<L, Sizes...> lhs, R rhs) -> Out
-{
-    Out out{};
-    map(out.m_data, lhs.m_data, std::bind(std::multiplies<>{}, std::placeholders::_1, rhs));
-    return out;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t... Sizes,
-    class = std::enable_if_t<!is_value<R>::value>,
-    class O = std::invoke_result_t<std::divides<>, L, R>,
-    class Out = value_t<O, Sizes...>>
-constexpr auto operator/(value_t<L, Sizes...> lhs, R rhs) -> Out
-{
-    Out out{};
-    map(out.m_data, lhs.m_data, std::bind(std::divides<>{}, std::placeholders::_1, rhs));
-    return out;
-}
-
-template <class L, class R, std::size_t... Sizes, class O = std::invoke_result_t<std::plus<>, L, R>>
-constexpr auto operator+=(value_t<L, Sizes...>& lhs, value_t<R, Sizes...> rhs) -> value_t<L, Sizes...>&
-{
-    map(lhs.m_data, lhs.m_data, rhs.m_data, std::plus<>{});
-    return lhs;
-}
-
-template <class L, class R, std::size_t... Sizes, class O = std::invoke_result_t<std::minus<>, L, R>>
-constexpr auto operator-=(value_t<L, Sizes...>& lhs, value_t<R, Sizes...> rhs) -> value_t<L, Sizes...>&
-{
-    map(lhs.m_data, lhs.m_data, rhs.m_data, std::minus<>{});
-    return lhs;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t... Sizes,
-    class = std::enable_if_t<!is_value<R>::value>,
-    class O = std::invoke_result_t<std::multiplies<>, L, R>>
-constexpr auto operator*=(value_t<L, Sizes...>& lhs, R rhs) -> value_t<L, Sizes...>&
-{
-    map(lhs.m_data, std::bind(std::multiplies<>{}, std::placeholders::_1, rhs));
-    return lhs;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t... Sizes,
-    class = std::enable_if_t<!is_value<R>::value>,
-    class O = std::invoke_result_t<std::divides<>, L, R>>
-constexpr auto operator/=(value_t<L, Sizes...>& lhs, R rhs) -> value_t<L, Sizes...>&
-{
-    map(lhs.m_data, std::bind(std::divides<>{}, std::placeholders::_1, rhs));
-    return lhs;
-}
-
-template <
-    class L,
-    class R,
-    std::size_t LR,
-    std::size_t D,
-    std::size_t RC,
-    class O = std::invoke_result_t<std::multiplies<>, L, R>,
-    class Out = value_t<O, LR, RC>>
-constexpr auto operator*(value_t<L, LR, D> lhs, value_t<R, D, RC> rhs) -> Out
-{
-    Out out = {};
-
-    for (std::ptrdiff_t r = 0; r < LR; ++r)
+    struct iterator
     {
-        for (std::ptrdiff_t c = 0; c < RC; ++c)
+        using reference = T;
+        using value_type = std::decay_t<T>;
+        using pointer
+            = std::conditional_t<std::is_reference_v<reference>, std::add_pointer_t<reference>, pointer_proxy<reference>>;
+        using difference_type = std::ptrdiff_t;
+        using iterator_category = std::random_access_iterator_tag;
+
+        using getter_type = reference (*)(void*, difference_type);
+
+        void* m_owner;
+        getter_type m_getter;
+        difference_type m_index;
+
+        iterator(void* owner, getter_type getter, difference_type index)
+            : m_owner(owner)
+            , m_getter(std::move(getter))
+            , m_index(index)
         {
-            O sum = {};
-            for (std::ptrdiff_t d = 0; d < D; ++d)
+        }
+
+        iterator(const iterator&) = default;
+        iterator(iterator&&) noexcept = default;
+
+        iterator& operator=(iterator other)
+        {
+            std::swap(m_owner, other.m_owner);
+            std::swap(m_getter, other.m_getter);
+            std::swap(m_index, other.m_index);
+            return *this;
+        }
+
+        reference operator[](difference_type offset) const
+        {
+            return m_getter(m_owner, m_index + offset);
+        }
+
+        reference operator*() const
+        {
+            return (*this)[0];
+        }
+
+        pointer operator->() const
+        {
+            if constexpr (std::is_reference_v<reference>)
             {
-                sum += lhs[{ r, d }] * rhs[{ d, c }];
+                return &**this;
             }
-
-            out[{ r, c }] = sum;
+            else
+            {
+                return pointer{ **this };
+            }
         }
+
+        iterator& operator++()
+        {
+            ++m_index;
+            return *this;
+        }
+
+        iterator operator++(int)
+        {
+            iterator temp(*this);
+            ++(*this);
+            return temp;
+        }
+
+        iterator& operator--()
+        {
+            --m_index;
+            return *this;
+        }
+
+        iterator operator--(int)
+        {
+            iterator temp(*this);
+            --(*this);
+            return temp;
+        }
+
+        iterator& operator+=(difference_type offset)
+        {
+            m_index += offset;
+            return *this;
+        }
+
+        iterator& operator-=(difference_type offset)
+        {
+            m_index -= offset;
+            return *this;
+        }
+
+        iterator operator-(difference_type offset) const
+        {
+            return iterator{ *this } -= offset;
+        }
+
+        friend bool operator==(const iterator& lhs, const iterator& rhs)
+        {
+            return lhs.m_index == rhs.m_index;
+        }
+
+        friend bool operator!=(const iterator& lhs, const iterator& rhs)
+        {
+            return lhs.m_index != rhs.m_index;
+        }
+
+        friend bool operator<(const iterator& lhs, const iterator& rhs)
+        {
+            return lhs.m_index < rhs.m_index;
+        }
+
+        friend bool operator>(const iterator& lhs, const iterator& rhs)
+        {
+            return lhs.m_index > rhs.m_index;
+        }
+
+        friend bool operator<=(const iterator& lhs, const iterator& rhs)
+        {
+            return lhs.m_index <= rhs.m_index;
+        }
+
+        friend bool operator>=(const iterator& lhs, const iterator& rhs)
+        {
+            return lhs.m_index >= rhs.m_index;
+        }
+
+        friend difference_type operator-(const iterator& lhs, const iterator& rhs)
+        {
+            return lhs.m_index - rhs.m_index;
+        }
+    };
+
+    using reference = typename iterator::reference;
+    using value_type = typename iterator::value_type;
+    using pointer = typename iterator::pointer;
+    using difference_type = typename iterator::difference_type;
+    using size_type = std::size_t;
+    using getter_type = typename iterator::getter_type;
+
+    void* m_owner;
+    getter_type m_getter;
+    size_type m_size;
+
+    collection_ref(void* owner, size_type size, getter_type getter)
+        : m_owner(owner)
+        , m_getter(std::move(getter))
+        , m_size(size)
+    {
     }
 
-    return out;
-}
+    iterator begin() const
+    {
+        return iterator{ m_owner, m_getter, 0 };
+    }
 
-template <class T, std::size_t R, std::size_t C>
-using matrix = value_t<T, R, C>;
+    iterator end() const
+    {
+        return iterator{ m_owner, m_getter, ssize() };
+    }
 
-template <class T, std::size_t D>
-using square_matrix = matrix<T, D, D>;
+    bool empty() const
+    {
+        return size() == 0;
+    }
 
-template <class T, std::size_t D>
-using vector = value_t<T, D>;
+    size_type size() const
+    {
+        return m_size;
+    }
 
-template <class T>
-using square_matrix_2d = square_matrix<T, 3>;
+    difference_type ssize() const
+    {
+        return static_cast<difference_type>(size());
+    }
 
-template <class T>
-using square_matrix_3d = square_matrix<T, 4>;
+    reference at(difference_type offset) const
+    {
+        return *(begin() + offset);
+    }
 
-template <class T>
-using vector_2d = vector<T, 2>;
+    reference operator[](difference_type offset) const
+    {
+        return at(offset);
+    }
 
-template <class T>
-using vector_3d = vector<T, 3>;
+    reference front() const
+    {
+        return at(0);
+    }
+
+    reference back() const
+    {
+        return at(ssize() - 1);
+    }
+};
 
 int run(const std::vector<std::string_view>& args)
 {
-    static constexpr auto delimit = ferrugo::core::delimit;
-    const auto a = matrix<int, 2, 3>{ 1, 2, 3, 4, 5, 6 };
-    const auto b = matrix<int, 3, 2>{ 7, 8, 9, 10, 11, 12 };
+    std::vector<int> v = { 1, 2, 3, 99, 100, 999 };
 
-    std::cout << (a * b) << "\n";
-    std::cout << (b * a) << "\n";
+    collection_ref<const int&> col{ &v, v.size(), [](void* self, std::ptrdiff_t n) -> const int& {
+                                       return static_cast<const std::vector<int>*>(self)->at(n);
+                                   } };
+
+    for (const int& val : col)
+    {
+        std::cout << val << "\n";
+    }
+
+    std::cout << std::distance(col.begin(), col.end());
 
     return 0;
 }
