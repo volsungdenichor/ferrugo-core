@@ -35,232 +35,626 @@
 #include <variant>
 #include <vector>
 
-template <class T>
-struct pointer_proxy
+namespace nested_text
 {
-    T item;
 
-    T* operator->()
+template <class... Args>
+std::string str(Args&&... args)
+{
+    std::stringstream ss;
+    (ss << ... << std::forward<Args>(args));
+    return ss.str();
+}
+
+struct value;
+
+template <class T>
+struct codec;
+
+template <class T>
+struct codec_instance
+{
+    static const codec<T>& get()
     {
-        return std::addressof(item);
+        static const codec<T> m_instance = {};
+        return m_instance;
     }
 };
 
 template <class T>
-struct collection_ref
+value serialize(const T& in);
+
+template <class T>
+T deserialize(const value& in);
+
+template <class T>
+void deserialize(T& out, const value& in);
+
+using string_view_type = const char*;
+
+struct value
 {
-    struct iterator
+    enum class type
     {
-        using reference = T;
-        using value_type = std::decay_t<T>;
-        using pointer
-            = std::conditional_t<std::is_reference_v<reference>, std::add_pointer_t<reference>, pointer_proxy<reference>>;
-        using difference_type = std::ptrdiff_t;
-        using iterator_category = std::random_access_iterator_tag;
+        empty,
+        string,
+        list,
+        dictionary
+    };
 
-        using getter_type = reference (*)(void*, difference_type);
-
-        void* m_owner;
-        getter_type m_getter;
-        difference_type m_index;
-
-        iterator(void* owner, getter_type getter, difference_type index)
-            : m_owner(owner)
-            , m_getter(std::move(getter))
-            , m_index(index)
+    friend std::ostream& operator<<(std::ostream& os, type item)
+    {
+#define CASE(x) \
+    case type::x: return os << #x
+        switch (item)
         {
+            CASE(empty);
+            CASE(string);
+            CASE(list);
+            CASE(dictionary);
         }
+#undef CASE
+        return os;
+    }
+    struct empty_type
+    {
+    };
 
-        iterator(const iterator&) = default;
-        iterator(iterator&&) noexcept = default;
+    using string_type = std::string;
 
-        iterator& operator=(iterator other)
+    struct list_type : public std::vector<value>
+    {
+        using base_type = std::vector<value>;
+        using base_type::base_type;
+        using base_type::operator[];
+
+        friend std::ostream& operator<<(std::ostream& os, const list_type item)
         {
-            std::swap(m_owner, other.m_owner);
-            std::swap(m_getter, other.m_getter);
-            std::swap(m_index, other.m_index);
-            return *this;
-        }
-
-        reference operator[](difference_type offset) const
-        {
-            return m_getter(m_owner, m_index + offset);
-        }
-
-        reference operator*() const
-        {
-            return (*this)[0];
-        }
-
-        pointer operator->() const
-        {
-            if constexpr (std::is_reference_v<reference>)
+            os << "[";
+            for (std::size_t i = 0; i < item.size(); ++i)
             {
-                return &**this;
+                if (i != 0)
+                {
+                    os << ", ";
+                }
+                os << item[i];
             }
-            else
+            os << "]";
+            return os;
+        }
+    };
+    struct dictionary_type : public std::vector<std::pair<string_type, value>>
+    {
+        using base_type = std::vector<std::pair<string_type, value>>;
+        using base_type::base_type;
+        using base_type::operator[];
+
+        const value& operator[](const string_type& key) const
+        {
+            for (const auto& it : *this)
             {
-                return pointer{ **this };
+                if (it.first == key)
+                {
+                    return it.second;
+                }
             }
+            throw std::runtime_error{ str("dictionary: key '", key, "' not found") };
         }
 
-        iterator& operator++()
+        const value& operator[](const char* key) const
         {
-            ++m_index;
-            return *this;
+            return (*this)[string_type(key)];
         }
 
-        iterator operator++(int)
+        void emplace(string_type key, value val)
         {
-            iterator temp(*this);
-            ++(*this);
-            return temp;
+            base_type::emplace_back(std::move(key), std::move(val));
         }
 
-        iterator& operator--()
+        friend std::ostream& operator<<(std::ostream& os, const dictionary_type& item)
         {
-            --m_index;
-            return *this;
-        }
-
-        iterator operator--(int)
-        {
-            iterator temp(*this);
-            --(*this);
-            return temp;
-        }
-
-        iterator& operator+=(difference_type offset)
-        {
-            m_index += offset;
-            return *this;
-        }
-
-        iterator& operator-=(difference_type offset)
-        {
-            m_index -= offset;
-            return *this;
-        }
-
-        iterator operator-(difference_type offset) const
-        {
-            return iterator{ *this } -= offset;
-        }
-
-        friend bool operator==(const iterator& lhs, const iterator& rhs)
-        {
-            return lhs.m_index == rhs.m_index;
-        }
-
-        friend bool operator!=(const iterator& lhs, const iterator& rhs)
-        {
-            return lhs.m_index != rhs.m_index;
-        }
-
-        friend bool operator<(const iterator& lhs, const iterator& rhs)
-        {
-            return lhs.m_index < rhs.m_index;
-        }
-
-        friend bool operator>(const iterator& lhs, const iterator& rhs)
-        {
-            return lhs.m_index > rhs.m_index;
-        }
-
-        friend bool operator<=(const iterator& lhs, const iterator& rhs)
-        {
-            return lhs.m_index <= rhs.m_index;
-        }
-
-        friend bool operator>=(const iterator& lhs, const iterator& rhs)
-        {
-            return lhs.m_index >= rhs.m_index;
-        }
-
-        friend difference_type operator-(const iterator& lhs, const iterator& rhs)
-        {
-            return lhs.m_index - rhs.m_index;
+            os << "{";
+            for (std::size_t i = 0; i < item.size(); ++i)
+            {
+                if (i != 0)
+                {
+                    os << ", ";
+                }
+                os << item[i].first << ": " << item[i].second;
+            }
+            os << " }";
+            return os;
         }
     };
 
-    using reference = typename iterator::reference;
-    using value_type = typename iterator::value_type;
-    using pointer = typename iterator::pointer;
-    using difference_type = typename iterator::difference_type;
-    using size_type = std::size_t;
-    using getter_type = typename iterator::getter_type;
+    type m_type;
+    union
+    {
+        empty_type m_empty;
+        string_type m_string;
+        list_type m_list;
+        dictionary_type m_dictionary;
+    };
 
-    void* m_owner;
-    getter_type m_getter;
-    size_type m_size;
+    void reset()
+    {
+        switch (m_type)
+        {
+            case type::empty: break;
+            case type::string: m_string.~string_type(); break;
+            case type::list: m_list.~list_type(); break;
+            case type::dictionary: m_dictionary.~dictionary_type(); break;
+        }
+        m_type = type::empty;
+        m_empty = empty_type();
+    }
 
-    collection_ref(void* owner, size_type size, getter_type getter)
-        : m_owner(owner)
-        , m_getter(std::move(getter))
-        , m_size(size)
+    ~value()
+    {
+        reset();
+    }
+
+    value() : m_type(type::empty), m_empty(empty_type{})
     {
     }
 
-    iterator begin() const
+    value(string_type v) : m_type(type::string)
     {
-        return iterator{ m_owner, m_getter, 0 };
+        new (&m_string) string_type(std::move(v));
     }
 
-    iterator end() const
+    value(string_view_type v) : value(string_type(v))
     {
-        return iterator{ m_owner, m_getter, ssize() };
     }
 
-    bool empty() const
+    value(list_type v) : m_type(type::list)
     {
-        return size() == 0;
+        new (&m_list) list_type(std::move(v));
     }
 
-    size_type size() const
+    value(dictionary_type v) : m_type(type::dictionary)
     {
-        return m_size;
+        new (&m_dictionary) dictionary_type(std::move(v));
     }
 
-    difference_type ssize() const
+    value(const value& other) : m_type(other.m_type)
     {
-        return static_cast<difference_type>(size());
+        switch (m_type)
+        {
+            case type::empty: m_empty = other.m_empty; break;
+            case type::string: new (&m_string) string_type(other.m_string); break;
+            case type::list: new (&m_list) list_type(other.m_list); break;
+            case type::dictionary: new (&m_dictionary) dictionary_type(other.m_dictionary); break;
+        }
     }
 
-    reference at(difference_type offset) const
+    value(value&& other) noexcept : m_type(other.m_type)
     {
-        return *(begin() + offset);
+        switch (m_type)
+        {
+            case type::empty: m_empty = other.m_empty; break;
+            case type::string: new (&m_string) string_type(std::move(other.m_string)); break;
+            case type::list: new (&m_list) list_type(std::move(other.m_list)); break;
+            case type::dictionary: new (&m_dictionary) dictionary_type(std::move(other.m_dictionary)); break;
+        }
     }
 
-    reference operator[](difference_type offset) const
+    template <class T>
+    value(const T& item) : value(serialize(item))
     {
-        return at(offset);
     }
 
-    reference front() const
+    value& operator=(const value& other)
     {
-        return at(0);
+        reset();
+        m_type = other.m_type;
+        switch (m_type)
+        {
+            case type::empty: m_empty = other.m_empty; break;
+            case type::string: new (&m_string) string_type(other.m_string); break;
+            case type::list: new (&m_list) list_type(other.m_list); break;
+            case type::dictionary: new (&m_dictionary) dictionary_type(other.m_dictionary); break;
+        }
+        return *this;
     }
 
-    reference back() const
+    value& operator=(value&& other)
     {
-        return at(ssize() - 1);
+        reset();
+        m_type = other.m_type;
+        switch (m_type)
+        {
+            case type::empty: m_empty = other.m_empty; break;
+            case type::string: new (&m_string) string_type(std::move(other.m_string)); break;
+            case type::list: new (&m_list) list_type(std::move(other.m_list)); break;
+            case type::dictionary: new (&m_dictionary) dictionary_type(std::move(other.m_dictionary)); break;
+        }
+        return *this;
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const value& item)
+    {
+        switch (item.m_type)
+        {
+            case type::empty: os << "<< empty >>"; break;
+            case type::string: os << item.m_string; break;
+            case type::list: os << item.m_list; break;
+            case type::dictionary: os << item.m_dictionary; break;
+        }
+        return os;
+    }
+
+    static std::string error_msg(type expected, type actual)
+    {
+        return str("value: type mismatch - expected ", expected, ", actual ", actual);
+    }
+
+    const string_type* if_string() const
+    {
+        return m_type == type::string ? &m_string : nullptr;
+    }
+
+    const string_type& as_string() const
+    {
+        return m_type == type::string ? m_string : throw std::runtime_error{ error_msg(type::string, m_type) };
+    }
+
+    const list_type* if_list() const
+    {
+        return m_type == type::list ? &m_list : nullptr;
+    }
+
+    const list_type& as_list() const
+    {
+        return m_type == type::list ? m_list : throw std::runtime_error{ error_msg(type::list, m_type) };
+    }
+
+    const dictionary_type* if_dictionary() const
+    {
+        return m_type == type::dictionary ? &m_dictionary : nullptr;
+    }
+
+    const dictionary_type& as_dictionary() const
+    {
+        return m_type == type::dictionary ? m_dictionary : throw std::runtime_error{ error_msg(type::dictionary, m_type) };
+    }
+
+    template <class T>
+    operator T() const
+    {
+        return deserialize<T>(*this);
+    }
+
+    const value& operator[](const string_type& key) const
+    {
+        return as_dictionary()[key];
+    }
+
+    const value& operator[](const char* key) const
+    {
+        return (*this)[string_type(key)];
+    }
+
+    const value& operator[](std::size_t index) const
+    {
+        return as_list().at(index);
+    }
+};
+
+template <class T>
+value serialize(const T& in)
+{
+    return codec_instance<T>::get().serialize(in);
+}
+
+template <class T>
+T deserialize(const value& in)
+{
+    return codec_instance<T>::get().deserialize(in);
+}
+
+template <class T>
+void deserialize(T& out, const value& in)
+{
+    out = deserialize<T>(in);
+}
+
+template <>
+struct codec<std::string>
+{
+    value serialize(const std::string& in) const
+    {
+        return in;
+    }
+
+    std::string deserialize(const value& in) const
+    {
+        return in.as_string();
+    }
+};
+
+template <class T>
+struct as_string_codec
+{
+    value serialize(const T& in) const
+    {
+        std::stringstream ss;
+        ss << in;
+        return value::string_type{ ss.str() };
+    }
+
+    T deserialize(const value& in) const
+    {
+        std::stringstream ss;
+        ss << in.as_string();
+        T res;
+        ss >> res;
+        if (!ss)
+        {
+            throw std::runtime_error{ str("cannot decode ", in.as_string(), " to ", typeid(T).name()) };
+        }
+        return res;
+    }
+};
+
+template <>
+struct codec<int> : as_string_codec<int>
+{
+};
+
+template <>
+struct codec<char>
+{
+    value serialize(char in) const
+    {
+        return std::string(1, in);
+    }
+
+    char deserialize(const value& in) const
+    {
+        return in.as_string().at(0);
+    }
+};
+
+template <>
+struct codec<bool>
+{
+    value serialize(bool in) const
+    {
+        return in ? "true" : "false";
+    }
+
+    bool deserialize(const value& in) const
+    {
+        const auto& s = in.as_string();
+        if (s == "true")
+        {
+            return true;
+        }
+        else if (s == "false")
+        {
+            return true;
+        }
+        throw std::runtime_error{ str("cannot decode ", s, " to boolean") };
+    }
+};
+
+template <class T>
+struct codec<std::vector<T>>
+{
+    value serialize(const std::vector<T>& in) const
+    {
+        value::list_type out;
+        out.reserve(in.size());
+        for (const T& item : in)
+        {
+            out.push_back(nested_text::serialize(item));
+        }
+        return out;
+    }
+
+    std::vector<T> deserialize(const value& in) const
+    {
+        const auto& lst = in.as_list();
+        std::vector<T> out;
+        out.reserve(lst.size());
+        for (const auto& v : lst)
+        {
+            out.push_back(nested_text::deserialize<T>(v));
+        }
+        return out;
+    }
+};
+
+template <class T>
+struct codec<std::set<T>>
+{
+    value serialize(const std::set<T>& in) const
+    {
+        value::list_type out;
+        out.reserve(in.size());
+        for (const T& item : in)
+        {
+            out.push_back(nested_text::serialize(item));
+        }
+        return out;
+    }
+
+    std::set<T> deserialize(const value& in) const
+    {
+        const auto& lst = in.as_list();
+        std::set<T> out;
+        for (const auto& v : lst)
+        {
+            out.insert(nested_text::deserialize<T>(v));
+        }
+        return out;
+    }
+};
+
+template <class K, class V>
+struct codec<std::map<K, V>>
+{
+    value serialize(const std::map<K, V>& in) const
+    {
+        value::dictionary_type out;
+        for (const auto& item : in)
+        {
+            out.emplace(nested_text::serialize(item.first).as_string(), nested_text::serialize(item.second));
+        }
+        return out;
+    }
+
+    std::map<K, V> deserialize(const value& in) const
+    {
+        const auto& dct = in.as_dictionary();
+        std::map<K, V> out;
+        for (const auto& item : dct)
+        {
+            out.insert({ nested_text::deserialize<K>(item.first), nested_text::deserialize<V>(item.second) });
+        }
+        return out;
+    }
+};
+
+template <class E>
+struct enum_codec
+{
+    std::vector<std::pair<E, string_view_type>> m_values;
+
+    enum_codec(std::vector<std::pair<E, string_view_type>> values) : m_values(std::move(values))
+    {
+    }
+
+    value serialize(E in) const
+    {
+        for (const auto& pair : m_values)
+        {
+            if (pair.first == in)
+            {
+                return value::string_type{ pair.second };
+            }
+        }
+        throw std::runtime_error{ "unregistered value" };
+    }
+
+    E deserialize(const value& in) const
+    {
+        const auto& s = in.as_string();
+        for (const auto& pair : m_values)
+        {
+            if (pair.second == s)
+            {
+                return pair.first;
+            }
+        }
+        throw std::runtime_error{ str("On deserializing enum: unknown value '", s, "'") };
+    }
+};
+
+template <class T>
+struct struct_codec
+{
+    struct field_info
+    {
+        string_view_type name;
+        std::function<void(value::dictionary_type&, const T&, string_view_type n)> serialize;
+        std::function<void(T&, const value::dictionary_type&, string_view_type n)> deserialize;
+
+        template <class Type>
+        field_info(string_view_type n, Type T::*field)
+            : name(n)
+            , serialize{ [=](value::dictionary_type& out, const T& in, string_view_type n)
+                         { out.emplace(n, nested_text::serialize(in.*field)); } }
+            , deserialize{ [=](T& out, const value::dictionary_type& in, string_view_type n)
+                           { nested_text::deserialize(out.*field, in[n]); } }
+        {
+        }
+    };
+
+    std::vector<field_info> m_fields;
+
+    struct_codec(std::vector<field_info> fields) : m_fields(std::move(fields))
+    {
+    }
+
+    value serialize(const T& in) const
+    {
+        value::dictionary_type dct;
+        for (const auto& field : m_fields)
+        {
+            field.serialize(dct, in, field.name);
+        }
+        return dct;
+    }
+
+    T deserialize(const value& in) const
+    {
+        const auto& dct = in.as_dictionary();
+        T res = {};
+        for (const auto& field : m_fields)
+        {
+            field.deserialize(res, dct, field.name);
+        }
+        return res;
+    }
+};
+
+}  // namespace nested_text
+
+enum class Sex
+{
+    male,
+    female
+};
+
+std::ostream& operator<<(std::ostream& os, Sex item)
+{
+    switch (item)
+    {
+        case Sex::male: return os << "male";
+        case Sex::female: return os << "female";
+    }
+    return os;
+}
+struct Person
+{
+    std::string name;
+    Sex sex;
+    int age;
+
+    friend std::ostream& operator<<(std::ostream& os, const Person& item)
+    {
+        return os << item.name << " " << item.sex << " " << item.age;
+    }
+};
+
+template <>
+struct nested_text::codec<Sex> : enum_codec<Sex>
+{
+    codec() : enum_codec{ { { Sex::male, "male" }, { Sex::female, "female" } } }
+    {
+    }
+};
+
+template <>
+struct nested_text::codec<Person> : struct_codec<Person>
+{
+    codec()
+        : struct_codec({
+            { "name", &Person::name },
+            { "sex", &Person::sex },
+            { "age", &Person::age },
+        })
+    {
     }
 };
 
 int run(const std::vector<std::string_view>& args)
 {
-    std::vector<int> v = { 1, 2, 3, 99, 100, 999 };
-
-    collection_ref<const int&> col{ &v, v.size(), [](void* self, std::ptrdiff_t n) -> const int& {
-                                       return static_cast<const std::vector<int>*>(self)->at(n);
-                                   } };
-
-    for (const int& val : col)
-    {
-        std::cout << val << "\n";
-    }
-
-    std::cout << std::distance(col.begin(), col.end());
+    const auto p = std::vector{ Person{ "ala", Sex::female, 45 }, Person{ "jas", Sex::male, 42 } };
+    std::cout << nested_text::value(p) << "\n";
+    std::cout << nested_text::value(p)[1]["name"] << std::endl;
 
     return 0;
 }
