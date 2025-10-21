@@ -236,6 +236,18 @@ inline auto quoted_string() -> parser_t
         quote);
 }
 
+inline auto csv(char separator) -> parsing::parser_t
+{
+    const auto sep = sequence(  //
+        character(is_space) | zero_or_more,
+        character(eq(separator)),
+        character(is_space) | zero_or_more);
+
+    const auto item = any(quoted_string(), character(ne(separator)) | zero_or_more);
+
+    return sep | then(item);
+}
+
 constexpr inline struct tokenize_fn
 {
     template <class Out>
