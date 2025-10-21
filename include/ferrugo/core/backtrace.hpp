@@ -41,29 +41,6 @@ struct stack_t : public std::vector<frame_t>
     }
 };
 
-inline auto replace(std::regex regex, std::string to)
-{
-    return [=](const std::string& text) -> std::string
-    {
-        std::string result;
-        std::regex_replace(std::back_inserter(result), text.begin(), text.end(), regex, to);
-        return result;
-    };
-}
-
-inline auto replace_type_names(std::string type) -> std::string
-{
-    static const std::vector<std::tuple<std::regex, std::string>> patterns
-        = { { std::regex("std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >"), "std::string" },
-            { std::regex("std::vector<(.*), std::allocator<(.*)> >"), "std::vector<$1>" } };
-
-    for (const auto& [from, to] : patterns)
-    {
-        type = replace(from, to)(type);
-    }
-    return type;
-}
-
 inline auto backtrace(std::size_t frames_to_skip = 0, std::size_t n = 128) -> stack_t
 {
     static constexpr auto demangle = [](const char* s) -> std::string
@@ -81,7 +58,7 @@ inline auto backtrace(std::size_t frames_to_skip = 0, std::size_t n = 128) -> st
 
     static constexpr auto trim = [](const std::size_t max_size, std::string_view ellipsis = " (...)")
     {
-        return [=](const std::string& text)
+        return [=](const std::string& text) -> std::string
         {
             if (text.size() <= max_size)
             {
