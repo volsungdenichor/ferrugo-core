@@ -35,7 +35,7 @@ inline auto ne(char v) -> char_predicate_t
     return [=](char ch) { return ch != v; };
 }
 
-inline auto any_of(std::string chars) -> char_predicate_t
+inline auto one_of(std::string chars) -> char_predicate_t
 {
     return [=](char ch) { return chars.find(ch) != std::string::npos; };
 }
@@ -62,6 +62,8 @@ constexpr inline struct character_fn
         };
     }
 } character{};
+
+static const inline auto whitespace = character(is_space);
 
 constexpr inline struct string_fn
 {
@@ -225,23 +227,23 @@ constexpr inline struct then_fn
 
 inline auto quoted_string() -> parser_t
 {
-    static const auto replace = [](std::string value) -> std::function<std::string(std::string)>
+    static const auto replace_with = [](std::string value) -> std::function<std::string(std::string)>
     {  //
         return [=](std::string) -> std::string { return value; };
     };
-    static const auto quote = character(eq('"')) | transform(replace(""));
+    static const auto quote = character(eq('"')) | transform(replace_with(""));
     return sequence(  //
         quote,
-        any(string("\\\"") | transform(replace("\"")), character(ne('"'))) | zero_or_more,
+        any(string("\\\"") | transform(replace_with("\"")), character(ne('"'))) | zero_or_more,
         quote);
 }
 
-inline auto csv(char separator) -> parsing::parser_t
+inline auto csv(char separator) -> parser_t
 {
     const auto sep = sequence(  //
-        character(is_space) | zero_or_more,
+        whitespace | zero_or_more,
         character(eq(separator)),
-        character(is_space) | zero_or_more);
+        whitespace | zero_or_more);
 
     const auto item = any(quoted_string(), character(ne(separator)) | zero_or_more);
 
@@ -250,29 +252,39 @@ inline auto csv(char separator) -> parsing::parser_t
 
 constexpr inline struct tokenize_fn
 {
-    template <class Out>
-    auto operator()(Out out, std::string_view text, const parser_t& parser) const -> Out
+    template <class State, class Func>
+    auto operator()(std::string_view text, const parser_t& parser, State state, Func func) const -> State
     {
         while (!text.empty())
         {
             if (const auto res = parser(text))
             {
-                auto [token, remainder] = *res;
-                *out++ = std::move(token);
-                text = remainder;
+                state = std::invoke(func, std::move(state), std::move(res->first));
+                text = res->second;
             }
             else
             {
                 break;
             }
         }
-        return out;
+        return state;
+    }
+
+    template <class Out>
+    auto operator()(std::string_view text, const parser_t& parser, Out out) const -> Out
+    {
+        const auto func = [](Out o, std::string token) -> Out
+        {
+            *o++ = std::move(token);
+            return o;
+        };
+        return (*this)(text, parser, std::move(out), func);
     }
 
     auto operator()(std::string_view text, const parser_t& parser) const -> std::vector<std::string>
     {
         std::vector<std::string> out;
-        (*this)(std::back_inserter(out), text, parser);
+        (*this)(text, parser, std::back_inserter(out));
         return out;
     }
 } tokenize{};

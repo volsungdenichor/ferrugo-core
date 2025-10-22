@@ -14,79 +14,13 @@ namespace next
 
 using string_t = std::string;
 
-struct print_visitor_t
-{
-    std::ostream& os;
-
-    template <class T>
-    void operator()(const T& v) const
-    {
-        os << v;
-    }
-
-    void operator()(const string_t& v) const
-    {
-        if (!v.empty()
-            && std::none_of(
-                v.begin(), v.end(), [](char ch) { return parsing::is_space(ch) && parsing::any_of("\"[]{}")(ch); }))
-        {
-            os << v;
-        }
-        else
-        {
-            os << std::quoted(v);
-        }
-    }
-};
-
-template <class T>
-struct list_base_t : public std::vector<T>
-{
-    using base_t = std::vector<T>;
-    using base_t::base_t;
-
-    friend std::ostream& operator<<(std::ostream& os, const list_base_t& item)
-    {
-        os << "[";
-        for (auto it = item.begin(); it != item.end(); ++it)
-        {
-            if (it != item.begin())
-            {
-                os << " ";
-            }
-            os << *it;
-        }
-        os << "]";
-        return os;
-    }
-};
-
-template <class T>
-struct map_base_t : public std::unordered_map<string_t, T>
-{
-    using base_t = std::unordered_map<string_t, T>;
-    using base_t::base_t;
-
-    friend std::ostream& operator<<(std::ostream& os, const map_base_t& item)
-    {
-        os << "{";
-        for (auto it = item.begin(); it != item.end(); ++it)
-        {
-            if (it != item.begin())
-            {
-                os << " ";
-            }
-            os << it->first << " " << it->second;
-        }
-        os << "}";
-        return os;
-    }
-};
-
 template <class A, class L, class M>
 struct value_base_t
 {
-    using data_type = std::variant<A, L, M>;
+    using atom_type = A;
+    using list_type = L;
+    using map_type = M;
+    using data_type = std::variant<atom_type, list_type, map_type>;
     data_type m_data;
 
     template <class T, class = std::enable_if_t<std::is_constructible_v<data_type, T>>>
@@ -94,53 +28,174 @@ struct value_base_t
     {
     }
 
-    value_base_t() : value_base_t(A{})
+    value_base_t() : value_base_t(atom_type{})
     {
     }
 
-    const A* if_atom() const
+    const atom_type* if_atom() const
     {
-        return std::get_if<A>(&m_data);
+        return std::get_if<atom_type>(&m_data);
     }
 
-    const L* if_list() const
+    const list_type* if_list() const
     {
-        return std::get_if<L>(&m_data);
+        return std::get_if<list_type>(&m_data);
     }
 
-    const M* if_map() const
+    const map_type* if_map() const
     {
-        return std::get_if<M>(&m_data);
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const value_base_t& item)
-    {
-        std::visit(print_visitor_t{ os }, item.m_data);
-        return os;
+        return std::get_if<map_type>(&m_data);
     }
 };
 
-struct list_t;
-struct map_t;
+struct value_t;
 
-using value_t = value_base_t<string_t, list_t, map_t>;
-
-struct list_t : list_base_t<value_t>
+struct list_t : public std::vector<value_t>
 {
-    using base_t = list_base_t<value_t>;
+    using base_t = std::vector<value_t>;
     using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const list_t& item);
 };
 
-struct map_t : map_base_t<value_t>
+struct map_t : public std::unordered_map<string_t, value_t>
 {
-    using base_t = map_base_t<value_t>;
+    using base_t = std::unordered_map<string_t, value_t>;
     using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const map_t& item);
 };
 
-template <class... Args>
-auto list(Args&&... args) -> list_t
+struct value_t : value_base_t<string_t, list_t, map_t>
 {
-    return list_t{ { std::forward<Args>(args)... } };
+    using base_t = value_base_t<string_t, list_t, map_t>;
+    using base_t::base_t;
+
+    friend std::ostream& operator<<(std::ostream& os, const value_t& item);
+};
+
+struct print_visitor
+{
+    std::ostream& os;
+    void operator()(const string_t& item) const
+    {
+        if (!item.empty()
+            && std::none_of(
+                item.begin(), item.end(), [](char ch) { return parsing::is_space(ch) || parsing::one_of("\"[]{}")(ch); }))
+        {
+            os << item;
+        }
+        else
+        {
+            os << std::quoted(item);
+        }
+    }
+
+    void operator()(const list_t& item) const
+    {
+        os << item;
+    }
+
+    void operator()(const map_t& item) const
+    {
+        os << item;
+    }
+};
+
+inline std::ostream& operator<<(std::ostream& os, const value_t& item)
+{
+    std::visit(print_visitor{ os }, item.m_data);
+    return os;
+}
+
+struct eq_visitor
+{
+    template <class T>
+    bool operator()(const T& lt, const T& rt) const
+    {
+        return lt == rt;
+    }
+
+    template <class L, class R>
+    bool operator()(const L& lt, const R& rt) const
+    {
+        return false;
+    }
+};
+
+struct lt_visitor
+{
+    template <class T>
+    bool operator()(const T& lt, const T& rt) const
+    {
+        return lt < rt;
+    }
+
+    template <class L, class R>
+    bool operator()(const L& lt, const R& rt) const
+    {
+        return false;
+    }
+};
+
+inline bool operator==(const value_t& lhs, const value_t& rhs)
+{
+    return std::visit(eq_visitor{}, lhs.m_data, rhs.m_data);
+}
+
+inline bool operator!=(const value_t& lhs, const value_t& rhs)
+{
+    return !(lhs == rhs);
+}
+
+inline bool operator<(const value_t& lhs, const value_t& rhs)
+{
+    return std::visit(lt_visitor{}, lhs.m_data, rhs.m_data);
+}
+
+inline bool operator>(const value_t& lhs, const value_t& rhs)
+{
+    return rhs < lhs;
+}
+
+inline bool operator<=(const value_t& lhs, const value_t& rhs)
+{
+    return !(lhs > rhs);
+}
+
+inline bool operator>=(const value_t& lhs, const value_t& rhs)
+{
+    return !(lhs < rhs);
+}
+
+inline std::ostream& operator<<(std::ostream& os, const list_t& item)
+{
+    os << "[";
+    for (auto it = item.begin(); it != item.end(); ++it)
+    {
+        if (it != item.begin())
+        {
+            os << " ";
+        }
+        os << *it;
+    }
+    os << "]";
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const map_t& item)
+{
+    os << "{";
+    for (auto it = item.begin(); it != item.end(); ++it)
+    {
+        if (it != item.begin())
+        {
+            os << " ";
+        }
+        os << it->first << " " << it->second;
+    }
+    os << "}";
+    return os;
 }
 
 constexpr inline struct tokenize_fn
@@ -155,11 +210,10 @@ private:
     static auto create_parser() -> parsing::parser_t
     {
         namespace p = parsing;
-        static const auto is_parenthesis = p::any_of("{}[]");
+        static const auto is_parenthesis = p::one_of("{}[]");
         static const auto literal
-            = p::character([](char ch) { return !p::is_space(ch) && !is_parenthesis(ch) && ch != '"'; }) | p::one_or_more;
-
-        return (p::character(p::is_space) | p::zero_or_more)
+            = p::character([](char ch) { return !(p::is_space(ch) || is_parenthesis(ch) || ch == '"'); }) | p::one_or_more;
+        return (p::whitespace | p::zero_or_more)
                | p::then(p::any(p::character(is_parenthesis), p::quoted_string(), literal));
     }
 } tokenize{};
