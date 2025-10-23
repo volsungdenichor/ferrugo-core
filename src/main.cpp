@@ -128,6 +128,12 @@ struct logical_fn
     {
         return value_predicate_t(std::make_unique<impl>(std::move(preds)));
     }
+
+    template <class... Tail>
+    auto operator()(value_predicate_t head, Tail... tail) const -> value_predicate_t
+    {
+        return (*this)(std::vector<value_predicate_t>{ std::move(head), std::move(tail)... });
+    }
 };
 
 template <class Op, char... Name>
@@ -199,8 +205,7 @@ static constexpr inline auto ge = cmp_fn<std::greater_equal<>, '>', '='>{};
 
 int run(const std::vector<std::string_view>& args)
 {
-    std::cout << all_of({ eq("Ala ma kota"), ne("Antifa ma HIV-a") }) << "\n";
-    std::cout << next::parse(R"([and [>= "Ala ma kota"] [<= "Antifa ma HIV-a"]])");
+    std::cout << next::parse(R"(   [ A B "A B \"C\"" 123    ])") << std::endl;
     return 0;
 }
 

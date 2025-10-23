@@ -207,14 +207,13 @@ constexpr inline struct tokenize_fn
     }
 
 private:
-    static auto create_parser() -> parsing::parser_t
+    static auto create_parser() -> parsing::parser_t<std::string>
     {
         namespace p = parsing;
         static const auto is_parenthesis = p::one_of("{}[]");
         static const auto literal
-            = p::character([](char ch) { return !(p::is_space(ch) || is_parenthesis(ch) || ch == '"'); }) | p::one_or_more;
-        return (p::whitespace | p::zero_or_more)
-               | p::then(p::any(p::character(is_parenthesis), p::quoted_string(), literal));
+            = p::at_least(1)(p::character([](char ch) { return !(p::is_space(ch) || is_parenthesis(ch) || ch == '"'); }));
+        return (p::many(p::whitespace)) >> p::any(p::character(is_parenthesis), p::quoted_string(), literal);
     }
 } tokenize{};
 
@@ -246,25 +245,6 @@ private:
         T result = v.front();
         v.erase(std::begin(v));
         return result;
-    }
-
-    static auto to_map(const std::vector<value_t>& items) -> value_t
-    {
-        if (items.size() % 2 != 0)
-        {
-            throw std::runtime_error{ "Map expects to have even number of elements" };
-        }
-        map_t result = {};
-        for (std::size_t i = 0; i < items.size(); i += 2)
-        {
-            result.emplace(*items[i + 0].if_atom(), items[i + 1]);
-        }
-        return result;
-    }
-
-    static auto to_list(const std::vector<value_t>& items) -> value_t
-    {
-        return list_t{ items.begin(), items.end() };
     }
 
     static auto read_until(std::vector<std::string>& tokens, const std::string& delimiter) -> std::vector<value_t>
@@ -303,6 +283,25 @@ private:
             }
         }
         return front;
+    }
+
+    static auto to_map(const std::vector<value_t>& items) -> value_t
+    {
+        if (items.size() % 2 != 0)
+        {
+            throw std::runtime_error{ "Map expects to have even number of elements" };
+        }
+        map_t result = {};
+        for (std::size_t i = 0; i < items.size(); i += 2)
+        {
+            result.emplace(*items[i + 0].if_atom(), items[i + 1]);
+        }
+        return result;
+    }
+
+    static auto to_list(const std::vector<value_t>& items) -> value_t
+    {
+        return list_t{ items.begin(), items.end() };
     }
 } parse{};
 
