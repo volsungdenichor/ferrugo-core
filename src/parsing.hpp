@@ -8,23 +8,19 @@
 namespace parsing
 {
 
-template <class T>
-using parse_result_t = std::pair<T, std::string_view>;
+using parse_result_t = std::pair<std::string, std::string_view>;
 
-template <class T>
-using maybe_parse_result_t = std::optional<parse_result_t<T>>;
+using maybe_parse_result_t = std::optional<parse_result_t>;
 
-template <class T>
-struct parser_t : public std::function<maybe_parse_result_t<T>(std::string_view)>
+struct parser_t : public std::function<maybe_parse_result_t(std::string_view)>
 {
-    using base_t = std::function<maybe_parse_result_t<T>(std::string_view)>;
+    using base_t = std::function<maybe_parse_result_t(std::string_view)>;
     using base_t::base_t;
 };
 
-template <class T>
-struct parser_combinator_t : public std::function<parser_t<T>(parser_t<T>)>
+struct parser_combinator_t : public std::function<parser_t(parser_t)>
 {
-    using base_t = std::function<parser_t<T>(parser_t<T>)>;
+    using base_t = std::function<parser_t(parser_t)>;
     using base_t::base_t;
 };
 
@@ -88,9 +84,9 @@ constexpr inline struct slice_fn
 
 constexpr inline struct character_fn
 {
-    auto operator()(char_predicate_t pred) const -> parser_t<std::string>
+    auto operator()(char_predicate_t pred) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+        return [=](std::string_view text) -> maybe_parse_result_t
         {
             if (!text.empty() && pred(text[0]))
             {
@@ -110,9 +106,9 @@ static const inline auto lower = character([](char ch) { return std::islower(ch)
 
 constexpr inline struct string_fn
 {
-    auto operator()(std::string str) const -> parser_t<std::string>
+    auto operator()(std::string str) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+        return [=](std::string_view text) -> maybe_parse_result_t
         {
             if ((text | slice({}, str.size())) == str)
             {
@@ -125,11 +121,11 @@ constexpr inline struct string_fn
 
 constexpr inline struct any_fn
 {
-    auto operator()(std::vector<parser_t<std::string>> parsers) const -> parser_t<std::string>
+    auto operator()(std::vector<parser_t> parsers) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+        return [=](std::string_view text) -> maybe_parse_result_t
         {
-            for (const parser_t<std::string>& parser : parsers)
+            for (const parser_t& parser : parsers)
             {
                 if (const auto res = parser(text))
                 {
@@ -141,21 +137,21 @@ constexpr inline struct any_fn
     }
 
     template <class... Tail>
-    auto operator()(parser_t<std::string> head, Tail... tail) const -> parser_t<std::string>
+    auto operator()(parser_t head, Tail... tail) const -> parser_t
     {
-        return (*this)(std::vector<parser_t<std::string>>{ std::move(head), std::move(tail)... });
+        return (*this)(std::vector<parser_t>{ std::move(head), std::move(tail)... });
     }
 } any{};
 
 constexpr inline struct sequence_fn
 {
-    auto operator()(std::vector<parser_t<std::string>> parsers) const -> parser_t<std::string>
+    auto operator()(std::vector<parser_t> parsers) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+        return [=](std::string_view text) -> maybe_parse_result_t
         {
             std::string result = {};
             std::string_view remainder = text;
-            for (const parser_t<std::string>& parser : parsers)
+            for (const parser_t& parser : parsers)
             {
                 if (const auto res = parser(remainder))
                 {
@@ -172,19 +168,19 @@ constexpr inline struct sequence_fn
     }
 
     template <class... Tail>
-    auto operator()(parser_t<std::string> head, Tail... tail) const -> parser_t<std::string>
+    auto operator()(parser_t head, Tail... tail) const -> parser_t
     {
-        return (*this)(std::vector<parser_t<std::string>>{ std::move(head), std::move(tail)... });
+        return (*this)(std::vector<parser_t>{ std::move(head), std::move(tail)... });
     }
 } sequence{};
 
 constexpr inline struct repeat_fn
 {
-    auto operator()(count_predicate_t pred) const -> parser_combinator_t<std::string>
+    auto operator()(count_predicate_t pred) const -> parser_combinator_t
     {
-        return [=](parser_t<std::string> parser) -> parser_t<std::string>
+        return [=](parser_t parser) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+            return [=](std::string_view text) -> maybe_parse_result_t
             {
                 std::size_t count = 0;
                 std::string result = {};
@@ -212,7 +208,7 @@ constexpr inline struct repeat_fn
     }
 } repeat{};
 
-const inline parser_combinator_t<std::string> many = repeat([](std::size_t v) { return v >= 0; });
+const inline parser_combinator_t many = repeat([](std::size_t v) { return v >= 0; });
 
 inline auto at_least(std::size_t count)
 {
@@ -236,9 +232,9 @@ inline auto times(std::size_t count)
 
 constexpr inline struct optional_fn
 {
-    auto operator()(parser_t<std::string> parser) const -> parser_t<std::string>
+    auto operator()(parser_t parser) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+        return [=](std::string_view text) -> maybe_parse_result_t
         {
             if (auto res = parser(text))
             {
@@ -251,11 +247,11 @@ constexpr inline struct optional_fn
 
 constexpr inline struct transform_fn
 {
-    auto operator()(std::function<std::string(std::string)> func) const -> parser_combinator_t<std::string>
+    auto operator()(std::function<std::string(std::string)> func) const -> parser_combinator_t
     {
-        return [=](parser_t<std::string> parser) -> parser_t<std::string>
+        return [=](parser_t parser) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+            return [=](std::string_view text) -> maybe_parse_result_t
             {
                 if (auto res = parser(text))
                 {
@@ -269,11 +265,11 @@ constexpr inline struct transform_fn
 
 constexpr inline struct then_fn
 {
-    auto operator()(parser_t<std::string> second) const -> parser_combinator_t<std::string>
+    auto operator()(parser_t second) const -> parser_combinator_t
     {
-        return [=](parser_t<std::string> first) -> parser_t<std::string>
+        return [=](parser_t first) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+            return [=](std::string_view text) -> maybe_parse_result_t
             {
                 if (auto fst = first(text))
                 {
@@ -287,11 +283,11 @@ constexpr inline struct then_fn
 
 constexpr inline struct skip_fn
 {
-    auto operator()(parser_t<std::string> second) const -> parser_combinator_t<std::string>
+    auto operator()(parser_t second) const -> parser_combinator_t
     {
-        return [=](parser_t<std::string> first) -> parser_t<std::string>
+        return [=](parser_t first) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t<std::string>
+            return [=](std::string_view text) -> maybe_parse_result_t
             {
                 if (auto fst = first(text))
                 {
@@ -307,17 +303,17 @@ constexpr inline struct skip_fn
     }
 } skip{};
 
-inline auto operator>>(parser_t<std::string> lhs, parser_t<std::string> rhs) -> parser_t<std::string>
+inline auto operator>>(parser_t lhs, parser_t rhs) -> parser_t
 {
     return then(std::move(rhs))(std::move(lhs));
 }
 
-inline auto operator<<(parser_t<std::string> lhs, parser_t<std::string> rhs) -> parser_t<std::string>
+inline auto operator<<(parser_t lhs, parser_t rhs) -> parser_t
 {
     return skip(std::move(rhs))(std::move(lhs));
 }
 
-inline auto quoted_string() -> parser_t<std::string>
+inline auto quoted_string() -> parser_t
 {
     static const auto replace_with = [](std::string value) -> std::function<std::string(std::string)>
     {  //
@@ -326,7 +322,7 @@ inline auto quoted_string() -> parser_t<std::string>
     return character(eq('"')) >> many(any(string("\\") >> string("\""), character(ne('"')))) << character(eq('"'));
 }
 
-inline auto csv(char separator) -> parser_t<std::string>
+inline auto csv(char separator) -> parser_t
 {
     const auto sep = sequence(  //
         many(whitespace),
@@ -341,7 +337,7 @@ inline auto csv(char separator) -> parser_t<std::string>
 constexpr inline struct tokenize_fn
 {
     template <class State, class Func>
-    auto operator()(std::string_view text, const parser_t<std::string>& parser, State state, Func func) const -> State
+    auto operator()(std::string_view text, const parser_t& parser, State state, Func func) const -> State
     {
         while (!text.empty())
         {
@@ -359,7 +355,7 @@ constexpr inline struct tokenize_fn
     }
 
     template <class Out>
-    auto operator()(std::string_view text, const parser_t<std::string>& parser, Out out) const -> Out
+    auto operator()(std::string_view text, const parser_t& parser, Out out) const -> Out
     {
         const auto func = [](Out o, std::string token) -> Out
         {
@@ -369,7 +365,7 @@ constexpr inline struct tokenize_fn
         return (*this)(text, parser, std::move(out), func);
     }
 
-    auto operator()(std::string_view text, const parser_t<std::string>& parser) const -> std::vector<std::string>
+    auto operator()(std::string_view text, const parser_t& parser) const -> std::vector<std::string>
     {
         std::vector<std::string> out;
         (*this)(text, parser, std::back_inserter(out));

@@ -202,18 +202,13 @@ constexpr inline struct tokenize_fn
 {
     auto operator()(std::string_view text) const -> std::vector<std::string>
     {
-        static const auto parser = create_parser();
-        return parsing::tokenize(text, parser);
-    }
-
-private:
-    static auto create_parser() -> parsing::parser_t<std::string>
-    {
         namespace p = parsing;
         static const auto is_parenthesis = p::one_of("{}[]");
         static const auto literal
             = p::at_least(1)(p::character([](char ch) { return !(p::is_space(ch) || is_parenthesis(ch) || ch == '"'); }));
-        return (p::many(p::whitespace)) >> p::any(p::character(is_parenthesis), p::quoted_string(), literal);
+        static const auto parser
+            = (p::many(p::whitespace)) >> p::any(p::character(is_parenthesis), p::quoted_string(), literal);
+        return parsing::tokenize(text, parser);
     }
 } tokenize{};
 
