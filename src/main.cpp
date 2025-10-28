@@ -1,211 +1,148 @@
-
-#include <array>
-#include <cmath>
-#include <cstdint>
-#include <cuchar>
-#include <deque>
-#include <ferrugo/core/backtrace.hpp>
-#include <ferrugo/core/channel.hpp>
-#include <ferrugo/core/chrono.hpp>
-#include <ferrugo/core/dimensions.hpp>
-#include <ferrugo/core/error_handling.hpp>
-#include <ferrugo/core/functional.hpp>
-#include <ferrugo/core/iterator_range.hpp>
-#include <ferrugo/core/ostream_utils.hpp>
-#include <ferrugo/core/overloaded.hpp>
-#include <ferrugo/core/rational.hpp>
-#include <ferrugo/core/sequence.hpp>
-#include <ferrugo/core/std_ostream.hpp>
-#include <ferrugo/core/type_name.hpp>
-#include <forward_list>
-#include <fstream>
+#include <cassert>
 #include <functional>
-#include <future>
-#include <iomanip>
 #include <iostream>
-#include <iterator>
-#include <list>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <numeric>
 #include <optional>
-#include <set>
-#include <typeindex>
-#include <unordered_map>
-#include <unordered_set>
-#include <variant>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "next.hpp"
 #include "parsing.hpp"
 
-struct value_predicate_impl_t
+enum class loop_state_t
 {
-    using ptr_t = std::unique_ptr<value_predicate_impl_t>;
-    virtual ~value_predicate_impl_t() = default;
-    virtual ptr_t clone() const = 0;
-    virtual bool match(const next::value_t& v) const = 0;
-    virtual next::value_t format() const = 0;
+    loop_continue,
+    loop_break,
+    loop_return
 };
 
-struct value_predicate_t
+// Base struct for all control results
+template <class T = void>
+struct step_t
 {
-    value_predicate_impl_t::ptr_t m_impl;
+    using value_type = std::optional<T>;
+    loop_state_t control;
+    value_type value;
 
-    explicit value_predicate_t(value_predicate_impl_t::ptr_t impl) : m_impl(std::move(impl))
+    constexpr step_t(loop_state_t c) : control(c)
     {
     }
 
-    value_predicate_t(const value_predicate_t& other) : value_predicate_t(other.m_impl->clone())
+    constexpr step_t(loop_state_t c, T val) : control(c), value(std::move(val))
     {
-    }
-
-    value_predicate_t(value_predicate_t&&) noexcept = default;
-
-    value_predicate_t& operator=(value_predicate_t other)
-    {
-        std::swap(m_impl, other.m_impl);
-        return *this;
-    }
-
-    bool operator()(const next::value_t& v) const
-    {
-        return m_impl->match(v);
-    }
-
-    next::value_t format() const
-    {
-        return m_impl->format();
-    }
-
-    friend std::ostream& operator<<(std::ostream& os, const value_predicate_t& item)
-    {
-        return os << item.format();
     }
 };
 
-template <class Self>
-struct value_predicate_impl_base_t : value_predicate_impl_t
+template <>
+struct step_t<void>
 {
-    ptr_t clone() const override
+    using value_type = void;
+    loop_state_t control;
+
+    constexpr step_t(loop_state_t c) : control(c)
     {
-        return std::make_unique<Self>(*static_cast<const Self*>(this));
+        assert(c != loop_state_t::loop_return);
+    }
+
+    template <class T>
+    constexpr operator step_t<T>() const
+    {
+        return step_t<T>{ control };
     }
 };
 
-template <class Op, char... Name>
-struct logical_fn
+template <class T>
+struct is_step : std::false_type
 {
-    struct impl : value_predicate_impl_base_t<impl>
+};
+
+template <class T>
+struct is_step<step_t<T>> : std::true_type
+{
+};
+
+template <class T>
+struct step_underlying_type_impl;
+
+template <class T>
+struct step_underlying_type_impl<step_t<T>>
+{
+    using type = typename step_t<T>::value_type;
+};
+
+template <class T>
+using step_underlying_type = typename step_underlying_type_impl<T>::type;
+
+constexpr inline auto loop_continue = step_t<>{ loop_state_t::loop_continue };
+constexpr inline auto loop_break = step_t<>{ loop_state_t::loop_break };
+
+template <typename T>
+inline constexpr auto loop_return(T val) -> step_t<T>
+{
+    return { loop_state_t::loop_return, std::move(val) };
+}
+
+struct for_each_fn
+{
+    template <class Iter, class Func>
+    auto operator()(Iter b, Iter e, Func&& func) const
     {
-        std::vector<value_predicate_t> m_preds;
+        using reference = typename std::iterator_traits<Iter>::reference;
+        using invoke_result = std::invoke_result_t<Func, reference>;
+        static_assert(is_step<invoke_result>::value, "step_t<T> type required");
 
-        explicit impl(std::vector<value_predicate_t> p) : m_preds(std::move(p))
+        using return_type = step_underlying_type<invoke_result>;
+        if constexpr (!std::is_void_v<return_type>)
         {
-        }
-
-        bool match(const next::value_t& v) const override
-        {
-            static const auto op = Op{};
-            return op(m_preds.begin(), m_preds.end(), [&](const value_predicate_t& p) { return p(v); });
-        }
-
-        next::value_t format() const override
-        {
-            static const std::string name = { Name... };
-            next::list_t result;
-            result.push_back(name);
-            for (const auto& p : m_preds)
+            for (auto it = b; it != e; ++it)
             {
-                result.push_back(p.format());
+                auto res = std::invoke(func, *it);
+                switch (res.control)
+                {
+                    case loop_state_t::loop_break: return return_type{};
+                    case loop_state_t::loop_continue: continue;
+                    case loop_state_t::loop_return: return res.value;
+                }
             }
-            return result;
+            return return_type{};
         }
-    };
-
-    auto operator()(std::vector<value_predicate_t> preds) const -> value_predicate_t
-    {
-        return value_predicate_t(std::make_unique<impl>(std::move(preds)));
-    }
-
-    template <class... Tail>
-    auto operator()(value_predicate_t head, Tail... tail) const -> value_predicate_t
-    {
-        return (*this)(std::vector<value_predicate_t>{ std::move(head), std::move(tail)... });
-    }
-};
-
-template <class Op, char... Name>
-struct cmp_fn
-{
-    struct impl : value_predicate_impl_base_t<impl>
-    {
-        next::value_t m_value;
-
-        explicit impl(next::value_t v) : m_value(std::move(v))
+        else
         {
+            for (auto it = b; it != e; ++it)
+            {
+                auto res = std::invoke(func, *it);
+                if (res.control == loop_state_t::loop_break)
+                {
+                    break;
+                }
+            }
         }
-
-        bool match(const next::value_t& v) const override
-        {
-            static const auto op = Op{};
-            return op(v, m_value);
-        }
-        next::value_t format() const override
-        {
-            static const std::string name = { Name... };
-            return next::list_t{ name, m_value };
-        }
-    };
-
-    auto operator()(next::value_t value) const -> value_predicate_t
-    {
-        return value_predicate_t(std::make_unique<impl>(std::move(value)));
     }
-};
 
-struct all_of_impl
-{
-    template <class Iter, class Pred>
-    bool operator()(Iter b, Iter e, Pred pred) const
+    template <class Range, class Func>
+    auto operator()(Range&& range, Func&& func) const
     {
-        return std::all_of(b, e, std::ref(pred));
+        return (*this)(std::begin(range), std::end(range), std::forward<Func>(func));
     }
-};
+} for_each{};
 
-struct any_of_impl
-{
-    template <class Iter, class Pred>
-    bool operator()(Iter b, Iter e, Pred pred) const
-    {
-        return std::any_of(b, e, std::ref(pred));
-    }
-};
-
-struct none_of_impl
-{
-    template <class Iter, class Pred>
-    bool operator()(Iter b, Iter e, Pred pred) const
-    {
-        return std::none_of(b, e, std::ref(pred));
-    }
-};
-
-static constexpr inline auto all_of = logical_fn<all_of_impl, 'a', 'l', 'l', '_', 'o', 'f'>{};
-static constexpr inline auto any_of = logical_fn<any_of_impl, 'a', 'n', 'y', '_', 'o', 'f'>{};
-static constexpr inline auto none_of = logical_fn<none_of_impl, 'n', 'o', 'n', 'e', '_', 'o', 'f'>{};
-
-static constexpr inline auto eq = cmp_fn<std::equal_to<>, '='>{};
-static constexpr inline auto ne = cmp_fn<std::not_equal_to<>, '!', '='>{};
-static constexpr inline auto lt = cmp_fn<std::less<>, '<'>{};
-static constexpr inline auto gt = cmp_fn<std::greater<>, '>'>{};
-static constexpr inline auto le = cmp_fn<std::less_equal<>, '<', '='>{};
-static constexpr inline auto ge = cmp_fn<std::greater_equal<>, '>', '='>{};
+constexpr inline auto iterate = for_each;
 
 int run(const std::vector<std::string_view>& args)
 {
-    std::cout << next::parse(R"(   [ A B "A B \"C\"" 123    ])") << std::endl;
+    std::vector<int> v = { 1, 3, 3, 9, -1 };
+    iterate(
+        v,
+        [](int item) -> step_t<>
+        {
+            if (item == 5)
+            {
+                return loop_break;
+            }
+            std::cout << item << "\n";
+            return loop_continue;
+        });
+    std::cout << "Total ";
     return 0;
 }
 

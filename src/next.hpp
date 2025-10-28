@@ -200,15 +200,14 @@ inline std::ostream& operator<<(std::ostream& os, const map_t& item)
 
 constexpr inline struct tokenize_fn
 {
-    auto operator()(std::string_view text) const -> std::vector<std::string>
+    auto operator()(std::string_view text) const -> std::vector<parsing::token_t>
     {
         namespace p = parsing;
         static const auto is_parenthesis = p::one_of("{}[]");
         static const auto literal
             = p::at_least(1)(p::character([](char ch) { return !(p::is_space(ch) || is_parenthesis(ch) || ch == '"'); }));
-        static const auto parser
-            = (p::many(p::whitespace)) >> p::any(p::character(is_parenthesis), p::quoted_string(), literal);
-        return parsing::tokenize(text, parser);
+        static const auto parser = (p::many(p::space)) >> p::any(p::character(is_parenthesis), p::quoted_string(), literal);
+        return parsing::tokenize(parsing::stream_t{ text }, parser);
     }
 } tokenize{};
 
@@ -216,7 +215,7 @@ constexpr inline struct parse_fn
 {
     auto operator()(std::string_view text) const -> value_t
     {
-        std::vector<std::string> tokens = tokenize(text);
+        std::vector<parsing::token_t> tokens = tokenize(text);
         std::vector<value_t> values = {};
         while (!tokens.empty())
         {
@@ -224,7 +223,19 @@ constexpr inline struct parse_fn
         }
         if (values.size() != 1)
         {
-            throw std::runtime_error{ "Exactly one value required" };
+            throw std::runtime_error{ std::invoke(
+                [&]() -> std::string
+                {
+                    std::stringstream ss;
+                    ss << "Exactly one value required.";
+                    ss << " Extra values:"
+                       << "\n";
+                    for (auto it = values.begin() + 1; it != values.end(); ++it)
+                    {
+                        ss << *it << "\n";
+                    }
+                    return ss.str();
+                }) };
         }
         return values.at(0);
     }
@@ -242,14 +253,14 @@ private:
         return result;
     }
 
-    static auto read_until(std::vector<std::string>& tokens, const std::string& delimiter) -> std::vector<value_t>
+    static auto read_until(std::vector<parsing::token_t>& tokens, const std::string& delimiter) -> std::vector<value_t>
     {
         if (tokens.empty())
         {
             throw std::runtime_error{ "invalid parentheses" };
         }
         std::vector<value_t> result = {};
-        while (!tokens.empty() && tokens.front() != delimiter)
+        while (!tokens.empty() && tokens.front().value != delimiter)
         {
             result.push_back(read_from(tokens));
         }
@@ -257,7 +268,7 @@ private:
         return result;
     }
 
-    static auto read_from(std::vector<std::string>& tokens) -> value_t
+    static auto read_from(std::vector<parsing::token_t>& tokens) -> value_t
     {
         static const auto parentheses
             = std::vector<std::tuple<std::string, std::string, value_t (*)(const std::vector<value_t>&)>>{
@@ -269,22 +280,42 @@ private:
         {
             return value_t();
         }
-        const string_t front = pop_front(tokens);
-        for (const auto& [opening, closing, func] : parentheses)
+        const parsing::token_t front = pop_front(tokens);
+        try
         {
-            if (front == opening)
+            for (const auto& [opening, closing, func] : parentheses)
             {
-                return func(read_until(tokens, closing));
+                if (front.value == opening)
+                {
+                    return func(read_until(tokens, closing));
+                }
             }
+            return front.value;
         }
-        return front;
+        catch (std::exception& ex)
+        {
+            throw std::runtime_error{ std::invoke(
+                [&]() -> std::string
+                {
+                    std::stringstream ss;
+                    ss << "On parsing " << front << ": " << ex.what();
+                    return ss.str();
+                }) };
+        }
     }
 
     static auto to_map(const std::vector<value_t>& items) -> value_t
     {
         if (items.size() % 2 != 0)
         {
-            throw std::runtime_error{ "Map expects to have even number of elements" };
+            throw std::runtime_error{ std::invoke(
+                [&]() -> std::string
+                {
+                    std::stringstream ss;
+                    ss << "Map expects to have even number of elements: ";
+                    ss << "Extra item " << items.back();
+                    return ss.str();
+                }) };
         }
         map_t result = {};
         for (std::size_t i = 0; i < items.size(); i += 2)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <iostream>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -8,13 +9,137 @@
 namespace parsing
 {
 
-using parse_result_t = std::pair<std::string, std::string_view>;
+struct location_t
+{
+    std::size_t row;
+    std::size_t col;
+
+    friend bool operator==(const location_t& lhs, const location_t& rhs)
+    {
+        return std::tie(lhs.row, lhs.col) == std::tie(rhs.row, rhs.col);
+    }
+
+    friend bool operator!=(const location_t& lhs, const location_t& rhs)
+    {
+        return !(lhs == rhs);
+    }
+
+    friend bool operator<(const location_t& lhs, const location_t& rhs)
+    {
+        return std::tie(lhs.row, lhs.col) < std::tie(rhs.row, rhs.col);
+    }
+
+    friend bool operator>(const location_t& lhs, const location_t& rhs)
+    {
+        return rhs < lhs;
+    }
+
+    friend bool operator<=(const location_t& lhs, const location_t& rhs)
+    {
+        return !(lhs > rhs);
+    }
+
+    friend bool operator>=(const location_t& lhs, const location_t& rhs)
+    {
+        return !(lhs < rhs);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const location_t& item)
+    {
+        return os << item.row << "/" << item.col;
+    }
+};
+struct symbol_t
+{
+    char value;
+    location_t location;
+
+    friend std::ostream& operator<<(std::ostream& os, const symbol_t& item)
+    {
+        return os << item.value << " (" << item.location << ")";
+    }
+};
+
+struct stream_t
+{
+    std::string_view m_content;
+    std::size_t m_pos;
+    location_t m_loc;
+
+    stream_t(std::string_view content, std::size_t pos, location_t loc) : m_content(content), m_pos(pos), m_loc(loc)
+    {
+    }
+
+    stream_t(std::string_view content) : stream_t(content, 0, location_t{ 0, 0 })
+    {
+    }
+
+    location_t location() const
+    {
+        return m_loc;
+    }
+
+    auto reset() const -> stream_t
+    {
+        return stream_t{ m_content };
+    }
+
+    auto get() const -> std::string_view
+    {
+        return m_content.substr(m_pos);
+    }
+
+    explicit operator bool() const
+    {
+        return !get().empty();
+    }
+
+    auto read() const -> std::optional<std::pair<symbol_t, stream_t>>
+    {
+        const auto content = get();
+        if (content.empty())
+        {
+            return {};
+        }
+        if (content.size() >= 2 && content[0] == '\r' && content[1] == '\n')
+        {
+            return { { symbol_t{ '\n', m_loc }, stream_t{ m_content, m_pos + 2, location_t{ m_loc.row + 1, 0 } } } };
+        }
+
+        if (content.size() >= 1 && content[0] == '\n')
+        {
+            return { { symbol_t{ '\n', m_loc }, stream_t{ m_content, m_pos + 1, location_t{ m_loc.row + 1, 0 } } } };
+        }
+
+        return { { symbol_t{ content[0], m_loc },
+                   stream_t{ m_content, m_pos + 1, location_t{ m_loc.row, m_loc.col + 1 } } } };
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const stream_t& item)
+    {
+        return os << item.get();
+    }
+};
+
+struct token_t
+{
+    std::string value;
+    location_t start_location;
+    location_t end_location;
+
+    friend std::ostream& operator<<(std::ostream& os, const token_t& item)
+    {
+        return os << item.value << " (" << item.start_location << "-" << item.end_location << ")";
+    }
+};
+
+using parse_result_t = std::pair<token_t, stream_t>;
 
 using maybe_parse_result_t = std::optional<parse_result_t>;
 
-struct parser_t : public std::function<maybe_parse_result_t(std::string_view)>
+struct parser_t : public std::function<maybe_parse_result_t(stream_t)>
 {
-    using base_t = std::function<maybe_parse_result_t(std::string_view)>;
+    using base_t = std::function<maybe_parse_result_t(stream_t)>;
     using base_t::base_t;
 };
 
@@ -26,23 +151,6 @@ struct parser_combinator_t : public std::function<parser_t(parser_t)>
 
 using char_predicate_t = std::function<bool(char)>;
 using count_predicate_t = std::function<bool(std::size_t)>;
-
-inline auto eq(char v) -> char_predicate_t
-{
-    return [=](char ch) { return ch == v; };
-}
-
-inline auto ne(char v) -> char_predicate_t
-{
-    return [=](char ch) { return ch != v; };
-}
-
-inline auto one_of(std::string chars) -> char_predicate_t
-{
-    return [=](char ch) { return chars.find(ch) != std::string::npos; };
-}
-
-const inline char_predicate_t is_space = [](char ch) { return std::isspace(ch); };
 
 constexpr inline struct slice_fn
 {
@@ -82,52 +190,63 @@ constexpr inline struct slice_fn
     };
 } slice{};
 
+const inline char_predicate_t is_space = [](char ch) { return std::isspace(ch); };
+const inline char_predicate_t is_digit = [](char ch) { return std::isdigit(ch); };
+const inline char_predicate_t is_alnum = [](char ch) { return std::isalnum(ch); };
+const inline char_predicate_t is_alpha = [](char ch) { return std::isalpha(ch); };
+const inline char_predicate_t is_upper = [](char ch) { return std::isupper(ch); };
+const inline char_predicate_t is_lower = [](char ch) { return std::islower(ch); };
+
 constexpr inline struct character_fn
 {
     auto operator()(char_predicate_t pred) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t
+        return [=](stream_t stream) -> maybe_parse_result_t
         {
-            if (!text.empty() && pred(text[0]))
+            if (auto res = stream.read())
             {
-                return { { std::string{ text | slice({}, 1) }, text | slice(1, {}) } };
+                if (pred(res->first.value))
+                {
+                    return { { token_t{ std::string(1, res->first.value), res->first.location, res->first.location },
+                               res->second } };
+                }
             }
             return {};
         };
     }
 } character{};
 
-static const inline auto whitespace = character(is_space);
-static const inline auto digit = character([](char ch) { return std::isdigit(ch); });
-static const inline auto alnum = character([](char ch) { return std::isalnum(ch); });
-static const inline auto alpha = character([](char ch) { return std::isalpha(ch); });
-static const inline auto upper = character([](char ch) { return std::isupper(ch); });
-static const inline auto lower = character([](char ch) { return std::islower(ch); });
+static const inline auto space = character(is_space);
+static const inline auto digit = character(is_digit);
+static const inline auto alnum = character(is_alnum);
+static const inline auto alpha = character(is_alpha);
+static const inline auto upper = character(is_upper);
+static const inline auto lower = character(is_lower);
 
-constexpr inline struct string_fn
+inline auto eq(char v) -> char_predicate_t
 {
-    auto operator()(std::string str) const -> parser_t
-    {
-        return [=](std::string_view text) -> maybe_parse_result_t
-        {
-            if ((text | slice({}, str.size())) == str)
-            {
-                return { { std::string{ text | slice({}, str.size()) }, text | slice(str.size(), {}) } };
-            }
-            return {};
-        };
-    }
-} string{};
+    return [=](char ch) { return ch == v; };
+}
+
+inline auto ne(char v) -> char_predicate_t
+{
+    return [=](char ch) { return ch != v; };
+}
+
+inline auto one_of(std::string chars) -> char_predicate_t
+{
+    return [=](char ch) { return chars.find(ch) != std::string::npos; };
+}
 
 constexpr inline struct any_fn
 {
     auto operator()(std::vector<parser_t> parsers) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t
+        return [=](stream_t stream) -> maybe_parse_result_t
         {
             for (const parser_t& parser : parsers)
             {
-                if (const auto res = parser(text))
+                if (const auto res = parser(stream))
                 {
                     return *res;
                 }
@@ -147,15 +266,18 @@ constexpr inline struct sequence_fn
 {
     auto operator()(std::vector<parser_t> parsers) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t
+        return [=](stream_t stream) -> maybe_parse_result_t
         {
+            location_t start_location = stream.location();
+            location_t end_location = stream.location();
             std::string result = {};
-            std::string_view remainder = text;
+            stream_t remainder = stream;
             for (const parser_t& parser : parsers)
             {
                 if (const auto res = parser(remainder))
                 {
-                    result += res->first;
+                    result += res->first.value;
+                    end_location = res->first.end_location;
                     remainder = res->second;
                 }
                 else
@@ -163,7 +285,7 @@ constexpr inline struct sequence_fn
                     return {};
                 }
             }
-            return { { std::move(result), remainder } };
+            return { { token_t{ std::move(result), start_location, end_location }, remainder } };
         };
     }
 
@@ -180,16 +302,19 @@ constexpr inline struct repeat_fn
     {
         return [=](parser_t parser) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t
+            return [=](stream_t stream) -> maybe_parse_result_t
             {
-                std::size_t count = 0;
+                location_t start_location = stream.location();
+                location_t end_location = stream.location();
                 std::string result = {};
-                std::string_view remainder = text;
-                while (!remainder.empty())
+                std::size_t count = 0;
+                stream_t remainder = stream;
+                while (remainder)
                 {
                     if (const auto res = parser(remainder))
                     {
-                        result += res->first;
+                        result += res->first.value;
+                        end_location = res->first.end_location;
                         remainder = res->second;
                         count += 1;
                     }
@@ -200,7 +325,7 @@ constexpr inline struct repeat_fn
                 }
                 if (pred(count))
                 {
-                    return { { std::move(result), remainder } };
+                    return { { token_t{ std::move(result), start_location, end_location }, remainder } };
                 }
                 return {};
             };
@@ -234,13 +359,13 @@ constexpr inline struct optional_fn
 {
     auto operator()(parser_t parser) const -> parser_t
     {
-        return [=](std::string_view text) -> maybe_parse_result_t
+        return [=](stream_t stream) -> maybe_parse_result_t
         {
-            if (auto res = parser(text))
+            if (auto res = parser(stream))
             {
                 return *res;
             }
-            return { { "", text } };
+            return { { token_t{ "", stream.location(), stream.location() }, stream } };
         };
     }
 } optional{};
@@ -251,11 +376,13 @@ constexpr inline struct transform_fn
     {
         return [=](parser_t parser) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t
+            return [=](stream_t stream) -> maybe_parse_result_t
             {
-                if (auto res = parser(text))
+                if (auto res = parser(stream))
                 {
-                    return { { func(std::move(res->first)), res->second } };
+                    return { { token_t{
+                                   func(std::move(res->first.value)), res->first.start_location, res->first.end_location },
+                               res->second } };
                 }
                 return std::nullopt;
             };
@@ -269,9 +396,9 @@ constexpr inline struct then_fn
     {
         return [=](parser_t first) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t
+            return [=](stream_t stream) -> maybe_parse_result_t
             {
-                if (auto fst = first(text))
+                if (auto fst = first(stream))
                 {
                     return second(fst->second);
                 }
@@ -287,11 +414,11 @@ constexpr inline struct skip_fn
     {
         return [=](parser_t first) -> parser_t
         {
-            return [=](std::string_view text) -> maybe_parse_result_t
+            return [=](stream_t stream) -> maybe_parse_result_t
             {
-                if (auto fst = first(text))
+                if (auto fst = first(stream))
                 {
-                    std::string result = fst->first;
+                    token_t result = fst->first;
                     if (auto sec = second(fst->second))
                     {
                         return { { std::move(result), sec->second } };
@@ -319,32 +446,21 @@ inline auto quoted_string() -> parser_t
     {  //
         return [=](std::string) -> std::string { return value; };
     };
-    return character(eq('"')) >> many(any(string("\\") >> string("\""), character(ne('"')))) << character(eq('"'));
-}
-
-inline auto csv(char separator) -> parser_t
-{
-    const auto sep = sequence(  //
-        many(whitespace),
-        character(eq(separator)),
-        many(whitespace));
-
-    const auto item = many(any(quoted_string(), character(ne(separator))));
-
-    return item << sep;
+    return character(eq('"')) >> many(any(character(eq('\\')) >> character(eq('\"')), character(ne('"'))))
+                                     << character(eq('"'));
 }
 
 constexpr inline struct tokenize_fn
 {
     template <class State, class Func>
-    auto operator()(std::string_view text, const parser_t& parser, State state, Func func) const -> State
+    auto operator()(stream_t stream, const parser_t& parser, State state, Func func) const -> State
     {
-        while (!text.empty())
+        while (stream)
         {
-            if (const auto res = parser(text))
+            if (const auto res = parser(stream))
             {
                 state = std::invoke(func, std::move(state), std::move(res->first));
-                text = res->second;
+                stream = res->second;
             }
             else
             {
@@ -355,20 +471,20 @@ constexpr inline struct tokenize_fn
     }
 
     template <class Out>
-    auto operator()(std::string_view text, const parser_t& parser, Out out) const -> Out
+    auto operator()(stream_t stream, const parser_t& parser, Out out) const -> Out
     {
-        const auto func = [](Out o, std::string token) -> Out
+        const auto func = [](Out o, token_t token) -> Out
         {
             *o++ = std::move(token);
             return o;
         };
-        return (*this)(text, parser, std::move(out), func);
+        return (*this)(stream, parser, std::move(out), func);
     }
 
-    auto operator()(std::string_view text, const parser_t& parser) const -> std::vector<std::string>
+    auto operator()(stream_t stream, const parser_t& parser) const -> std::vector<token_t>
     {
-        std::vector<std::string> out;
-        (*this)(text, parser, std::back_inserter(out));
+        std::vector<token_t> out;
+        (*this)(stream, parser, std::back_inserter(out));
         return out;
     }
 } tokenize{};
