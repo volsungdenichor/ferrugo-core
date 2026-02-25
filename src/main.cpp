@@ -21,11 +21,10 @@ struct Nesting
     static constexpr index_t null_index = 255;
 
     std::bitset<26> m_node_presence;
-    std::array<node_id_t, 26> m_parent_nodes;
-    std::array<index_t, 26> m_tree_indices;
-    std::array<node_id_t, 26> m_root_nodes;
-    std::array<std::vector<node_id_t>, 26> m_children;
-    size_t m_tree_count = 0;
+    std::array<index_t, 26> m_cabin_indices;
+    std::array<node_id_t, 26> m_cabins;
+    std::vector<std::pair<node_id_t, node_id_t>> m_edges;  // (parent, child) pairs in insertion order
+    size_t m_cabins_count = 0;
 
     struct Node
     {
@@ -33,71 +32,34 @@ struct Nesting
         std::vector<Node> children;
     };
 
-    Nesting() : m_node_presence{}, m_parent_nodes{}, m_tree_indices{}, m_root_nodes{}, m_children{}
+    Nesting(const std::vector<Node>& nodes = {}) : m_node_presence{}, m_cabin_indices{}, m_cabins{}
     {
-        m_parent_nodes.fill(null_node);
-        m_tree_indices.fill(null_index);
-        m_root_nodes.fill(null_node);
-        m_tree_count = 0;
-    }
+        m_cabin_indices.fill(null_index);
+        m_cabins.fill(null_node);
+        m_cabins_count = 0;
 
-    void Add(const Node& node)
-    {
-        for (const Node& child : node.children)
-        {
-            add_edge(node.fc, child.fc);
-            Add(child);
-        }
-    }
-
-    Nesting(const std::vector<Node>& nodes) : Nesting()
-    {
         for (const Node& node : nodes)
         {
-            add_root(node.fc);
+            add_cabin(node.fc);
         }
         for (const Node& node : nodes)
         {
-            Add(node);
+            add(node);
         }
     }
 
-    static index_t symbol_to_index(FareClass fc)
-    {
-        if (!('A' <= fc && fc <= 'Z'))
-        {
-            throw std::invalid_argument("Invalid character");
-        }
-        return static_cast<index_t>(fc - 'A');
-    }
-
-    static FareClass index_to_symbol(index_t index)
-    {
-        if (index >= 26)
-        {
-            throw std::invalid_argument("Invalid index");
-        }
-        return static_cast<FareClass>(index + 'A');
-    }
-
-    void add_node(FareClass c)
-    {
-        m_node_presence.set(symbol_to_index(c));
-    }
-
-    bool is_present(FareClass c) const
+    bool contains(FareClass c) const
     {
         return m_node_presence.test(symbol_to_index(c));
     }
 
-    Nesting& add_root(FareClass fc)
+    Nesting& add_cabin(FareClass fc)
     {
         const index_t index = symbol_to_index(fc);
         add_node(fc);
-        m_parent_nodes[index] = null_node;
-        m_root_nodes[index] = index;
-        m_tree_indices[index] = m_tree_count;
-        ++m_tree_count;
+        m_cabins[index] = index;
+        m_cabin_indices[index] = m_cabins_count;
+        ++m_cabins_count;
         return *this;
     }
 
@@ -108,51 +70,53 @@ struct Nesting
 
         add_node(parent);
         add_node(child);
-        m_parent_nodes[child_index] = parent_index;
-        m_root_nodes[child_index] = m_root_nodes[parent_index];
-        m_tree_indices[child_index] = m_tree_indices[parent_index];
-        m_children[parent_index].push_back(child_index);
+        m_cabins[child_index] = m_cabins[parent_index];
+        m_cabin_indices[child_index] = m_cabin_indices[parent_index];
+        m_edges.emplace_back(parent_index, child_index);
         return *this;
     }
 
     FareClass get_root(FareClass fc) const
     {
-        if (!is_present(fc))
+        if (!contains(fc))
         {
             throw std::invalid_argument("Node not present in the forest");
         }
-        return index_to_symbol(m_root_nodes[symbol_to_index(fc)]);
+        return index_to_symbol(m_cabins[symbol_to_index(fc)]);
     }
 
     std::optional<FareClass> get_parent(FareClass fc) const
     {
-        if (!is_present(fc))
+        if (!contains(fc))
         {
             throw std::invalid_argument("Node not present in the forest");
         }
-        const auto parent_index = m_parent_nodes[symbol_to_index(fc)];
-        if (parent_index == null_node)
+        const index_t child_index = symbol_to_index(fc);
+        for (const auto& [parent, child] : m_edges)
         {
-            return std::nullopt;
+            if (child == child_index)
+            {
+                return index_to_symbol(parent);
+            }
         }
-        return index_to_symbol(parent_index);
+        return std::nullopt;
     }
 
-    std::size_t get_tree_index(FareClass fc) const
+    std::size_t get_cabin_index(FareClass fc) const
     {
-        if (!is_present(fc))
+        if (!contains(fc))
         {
             throw std::invalid_argument("Node not present in the forest");
         }
-        return m_tree_indices[symbol_to_index(fc)];
+        return m_cabin_indices[symbol_to_index(fc)];
     }
 
     template <class Func>
     Func for_each_cabin(Func func) const
     {
-        for (size_t i = 0; i < this->m_tree_count; ++i)
+        for (size_t i = 0; i < this->m_cabins_count; ++i)
         {
-            const auto root_index = std::find(m_tree_indices.begin(), m_tree_indices.end(), i) - m_tree_indices.begin();
+            const auto root_index = std::find(m_cabin_indices.begin(), m_cabin_indices.end(), i) - m_cabin_indices.begin();
             std::invoke(func, index_to_symbol(root_index));
         }
         return func;
@@ -161,9 +125,9 @@ struct Nesting
     template <class Func>
     Func for_each_cabin_indexed(Func func) const
     {
-        for (size_t i = 0; i < this->m_tree_count; ++i)
+        for (size_t i = 0; i < this->m_cabins_count; ++i)
         {
-            const auto root_index = std::find(m_tree_indices.begin(), m_tree_indices.end(), i) - m_tree_indices.begin();
+            const auto root_index = std::find(m_cabin_indices.begin(), m_cabin_indices.end(), i) - m_cabin_indices.begin();
             std::invoke(func, i, index_to_symbol(root_index));
         }
         return func;
@@ -172,14 +136,23 @@ struct Nesting
     template <class Func>
     Func for_each_ancestors(FareClass fc, Func func) const
     {
-        if (!is_present(fc))
+        if (!contains(fc))
         {
             throw std::invalid_argument("Node not present in the forest");
         }
-        auto current = symbol_to_index(fc);
+        index_t current = symbol_to_index(fc);
         while (true)
         {
-            const auto parent_index = m_parent_nodes[current];
+            // Find parent of current node
+            index_t parent_index = null_node;
+            for (const auto& [parent, child] : m_edges)
+            {
+                if (child == current)
+                {
+                    parent_index = parent;
+                    break;
+                }
+            }
             if (parent_index == null_node)
             {
                 break;
@@ -193,7 +166,7 @@ struct Nesting
     template <class Func>
     Func for_each_self_and_ancestors(FareClass fc, Func func) const
     {
-        if (!is_present(fc))
+        if (!contains(fc))
         {
             throw std::invalid_argument("Node not present in the forest");
         }
@@ -201,7 +174,16 @@ struct Nesting
         while (true)
         {
             std::invoke(func, index_to_symbol(current));
-            const index_t parent_index = m_parent_nodes[current];
+            // Find parent of current node
+            index_t parent_index = null_node;
+            for (const auto& [parent, child] : m_edges)
+            {
+                if (child == current)
+                {
+                    parent_index = parent;
+                    break;
+                }
+            }
             if (parent_index == null_node)
             {
                 break;
@@ -214,14 +196,17 @@ struct Nesting
     template <class Func>
     Func for_each_child(FareClass fc, Func func) const
     {
-        if (!is_present(fc))
+        if (!contains(fc))
         {
             throw std::invalid_argument("Node not present in the forest");
         }
         const index_t parent_index = symbol_to_index(fc);
-        for (const node_id_t child_index : m_children[parent_index])
+        for (const auto& [parent, child] : m_edges)
         {
-            std::invoke(func, index_to_symbol(child_index));
+            if (parent == parent_index)
+            {
+                std::invoke(func, index_to_symbol(child));
+            }
         }
         return func;
     }
@@ -229,7 +214,7 @@ struct Nesting
     template <class Func>
     Func for_each_self_and_descendants(FareClass fc, Func func) const
     {
-        if (!is_present(fc))
+        if (!contains(fc))
         {
             throw std::invalid_argument("Node not present in the forest");
         }
@@ -261,6 +246,39 @@ struct Nesting
                 item.for_each_self_and_descendants(fc, [&](FareClass descendant) { os << descendant; });
             });
         return os;
+    }
+
+private:
+    void add_node(FareClass c)
+    {
+        m_node_presence.set(symbol_to_index(c));
+    }
+
+    void add(const Node& node)
+    {
+        for (const Node& child : node.children)
+        {
+            add_edge(node.fc, child.fc);
+            add(child);
+        }
+    }
+
+    static index_t symbol_to_index(FareClass fc)
+    {
+        if (!('A' <= fc && fc <= 'Z'))
+        {
+            throw std::invalid_argument("Invalid character");
+        }
+        return static_cast<index_t>(fc - 'A');
+    }
+
+    static FareClass index_to_symbol(index_t index)
+    {
+        if (index >= 26)
+        {
+            throw std::invalid_argument("Invalid index");
+        }
+        return static_cast<FareClass>(index + 'A');
     }
 };
 
@@ -319,6 +337,7 @@ struct PrettyPrinter
 
 void run(const std::vector<std::string_view>& args)
 {
+    std::cout << sizeof(Nesting) << std::endl;
     const Nesting nesting({ { 'E', { { 'F' }, { 'G', { { 'H' }, { 'I' }, { 'J' } } } } },
                             { 'A', { { 'B' }, { 'C' }, { 'D' } } },
                             { 'K', { { 'L' }, { 'M', { { 'O' }, { 'P', { { 'Q' } } } } }, { 'N' } } } });
@@ -333,7 +352,7 @@ void run(const std::vector<std::string_view>& args)
         [&](Nesting::FareClass fc)
         {
             const auto p = nesting.get_parent(fc);
-            std::cout << fc << " " << (p ? std::string(1, *p) : "null") << " " << nesting.get_tree_index(fc) << " [";
+            std::cout << fc << " " << (p ? std::string(1, *p) : "null") << " " << nesting.get_cabin_index(fc) << " [";
             nesting.for_each_ancestors(fc, [&](Nesting::FareClass ancestor) { std::cout << ancestor; });
             std::cout << "]\n";
         });
