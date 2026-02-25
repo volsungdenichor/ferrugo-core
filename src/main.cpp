@@ -1,156 +1,351 @@
-#include <cassert>
+
+#include <algorithm>
+#include <array>
+#include <bitset>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+// #include <zx/surface.hpp>
 
-#include "next.hpp"
-#include "parsing.hpp"
-
-enum class loop_state_t
+struct Nesting
 {
-    loop_continue,
-    loop_break,
-    loop_return
-};
+    using FareClass = char;
+    using node_id_t = std::uint8_t;
+    using index_t = std::uint8_t;
+    using size_t = std::uint8_t;
+    static constexpr node_id_t null_node = 255;
+    static constexpr index_t null_index = 255;
 
-// Base struct for all control results
-template <class T = void>
-struct step_t
-{
-    using value_type = std::optional<T>;
-    loop_state_t control;
-    value_type value;
+    std::bitset<26> m_node_presence;
+    std::array<node_id_t, 26> m_parent_nodes;
+    std::array<index_t, 26> m_tree_indices;
+    std::array<node_id_t, 26> m_root_nodes;
+    size_t m_tree_count = 0;
 
-    constexpr step_t(loop_state_t c) : control(c)
+    struct Node
     {
+        FareClass fc;
+        std::vector<Node> children;
+    };
+
+    Nesting() : m_node_presence{}, m_parent_nodes{}, m_tree_indices{}, m_root_nodes{}
+    {
+        m_parent_nodes.fill(null_node);
+        m_tree_indices.fill(null_index);
+        m_root_nodes.fill(null_node);
+        m_tree_count = 0;
     }
 
-    constexpr step_t(loop_state_t c, T val) : control(c), value(std::move(val))
+    void Add(const Node& node)
     {
-    }
-};
-
-template <>
-struct step_t<void>
-{
-    using value_type = void;
-    loop_state_t control;
-
-    constexpr step_t(loop_state_t c) : control(c)
-    {
-        assert(c != loop_state_t::loop_return);
-    }
-
-    template <class T>
-    constexpr operator step_t<T>() const
-    {
-        return step_t<T>{ control };
-    }
-};
-
-template <class T>
-struct is_step : std::false_type
-{
-};
-
-template <class T>
-struct is_step<step_t<T>> : std::true_type
-{
-};
-
-template <class T>
-struct step_underlying_type_impl;
-
-template <class T>
-struct step_underlying_type_impl<step_t<T>>
-{
-    using type = typename step_t<T>::value_type;
-};
-
-template <class T>
-using step_underlying_type = typename step_underlying_type_impl<T>::type;
-
-constexpr inline auto loop_continue = step_t<>{ loop_state_t::loop_continue };
-constexpr inline auto loop_break = step_t<>{ loop_state_t::loop_break };
-
-template <typename T>
-inline constexpr auto loop_return(T val) -> step_t<T>
-{
-    return { loop_state_t::loop_return, std::move(val) };
-}
-
-struct for_each_fn
-{
-    template <class Iter, class Func>
-    auto operator()(Iter b, Iter e, Func&& func) const
-    {
-        using reference = typename std::iterator_traits<Iter>::reference;
-        using invoke_result = std::invoke_result_t<Func, reference>;
-        static_assert(is_step<invoke_result>::value, "step_t<T> type required");
-
-        using return_type = step_underlying_type<invoke_result>;
-        if constexpr (!std::is_void_v<return_type>)
+        for (const Node& child : node.children)
         {
-            for (auto it = b; it != e; ++it)
-            {
-                auto res = std::invoke(func, *it);
-                switch (res.control)
-                {
-                    case loop_state_t::loop_break: return return_type{};
-                    case loop_state_t::loop_continue: continue;
-                    case loop_state_t::loop_return: return res.value;
-                }
-            }
-            return return_type{};
-        }
-        else
-        {
-            for (auto it = b; it != e; ++it)
-            {
-                auto res = std::invoke(func, *it);
-                if (res.control == loop_state_t::loop_break)
-                {
-                    break;
-                }
-            }
+            add_edge(node.fc, child.fc);
+            Add(child);
         }
     }
 
-    template <class Range, class Func>
-    auto operator()(Range&& range, Func&& func) const
+    Nesting(const std::vector<Node>& nodes) : Nesting()
     {
-        return (*this)(std::begin(range), std::end(range), std::forward<Func>(func));
-    }
-} for_each{};
-
-constexpr inline auto iterate = for_each;
-
-int run(const std::vector<std::string_view>& args)
-{
-    std::vector<int> v = { 1, 3, 3, 9, -1 };
-    iterate(
-        v,
-        [](int item) -> step_t<>
+        for (const Node& node : nodes)
         {
-            if (item == 5)
+            add_root(node.fc);
+        }
+        for (const Node& node : nodes)
+        {
+            Add(node);
+        }
+    }
+
+    static index_t symbol_to_index(FareClass fc)
+    {
+        if (!('A' <= fc && fc <= 'Z'))
+        {
+            throw std::invalid_argument("Invalid character");
+        }
+        return static_cast<index_t>(fc - 'A');
+    }
+
+    static FareClass index_to_symbol(index_t index)
+    {
+        if (index >= 26)
+        {
+            throw std::invalid_argument("Invalid index");
+        }
+        return static_cast<FareClass>(index + 'A');
+    }
+
+    void add_node(FareClass c)
+    {
+        m_node_presence.set(symbol_to_index(c));
+    }
+
+    bool is_present(FareClass c) const
+    {
+        return m_node_presence.test(symbol_to_index(c));
+    }
+
+    Nesting& add_root(FareClass fc)
+    {
+        const index_t index = symbol_to_index(fc);
+        add_node(fc);
+        m_parent_nodes[index] = null_node;
+        m_root_nodes[index] = index;
+        m_tree_indices[index] = m_tree_count;
+        ++m_tree_count;
+        return *this;
+    }
+
+    Nesting& add_edge(FareClass parent, FareClass child)
+    {
+        const index_t parent_index = symbol_to_index(parent);
+        const index_t child_index = symbol_to_index(child);
+
+        add_node(parent);
+        add_node(child);
+        m_parent_nodes[child_index] = parent_index;
+        m_root_nodes[child_index] = m_root_nodes[parent_index];
+        m_tree_indices[child_index] = m_tree_indices[parent_index];
+        return *this;
+    }
+
+    FareClass get_root(FareClass fc) const
+    {
+        if (!is_present(fc))
+        {
+            throw std::invalid_argument("Node not present in the forest");
+        }
+        return index_to_symbol(m_root_nodes[symbol_to_index(fc)]);
+    }
+
+    std::optional<FareClass> get_parent(FareClass fc) const
+    {
+        if (!is_present(fc))
+        {
+            throw std::invalid_argument("Node not present in the forest");
+        }
+        const auto parent_index = m_parent_nodes[symbol_to_index(fc)];
+        if (parent_index == null_node)
+        {
+            return std::nullopt;
+        }
+        return index_to_symbol(parent_index);
+    }
+
+    std::size_t get_tree_index(FareClass fc) const
+    {
+        if (!is_present(fc))
+        {
+            throw std::invalid_argument("Node not present in the forest");
+        }
+        return m_tree_indices[symbol_to_index(fc)];
+    }
+
+    template <class Func>
+    Func for_each_cabin(Func func) const
+    {
+        for (size_t i = 0; i < this->m_tree_count; ++i)
+        {
+            const auto root_index = std::find(m_tree_indices.begin(), m_tree_indices.end(), i) - m_tree_indices.begin();
+            std::invoke(func, index_to_symbol(root_index));
+        }
+        return func;
+    }
+
+    template <class Func>
+    Func for_each_cabin_indexed(Func func) const
+    {
+        for (size_t i = 0; i < this->m_tree_count; ++i)
+        {
+            const auto root_index = std::find(m_tree_indices.begin(), m_tree_indices.end(), i) - m_tree_indices.begin();
+            std::invoke(func, i, index_to_symbol(root_index));
+        }
+        return func;
+    }
+
+    template <class Func>
+    Func for_each_ancestors(FareClass fc, Func func) const
+    {
+        if (!is_present(fc))
+        {
+            throw std::invalid_argument("Node not present in the forest");
+        }
+        auto current = symbol_to_index(fc);
+        while (true)
+        {
+            const auto parent_index = m_parent_nodes[current];
+            if (parent_index == null_node)
             {
-                return loop_break;
+                break;
             }
-            std::cout << item << "\n";
-            return loop_continue;
+            current = parent_index;
+            std::invoke(func, index_to_symbol(current));
+        }
+        return func;
+    }
+
+    template <class Func>
+    Func for_each_self_and_ancestors(FareClass fc, Func func) const
+    {
+        if (!is_present(fc))
+        {
+            throw std::invalid_argument("Node not present in the forest");
+        }
+        index_t current = symbol_to_index(fc);
+        while (true)
+        {
+            std::invoke(func, index_to_symbol(current));
+            const index_t parent_index = m_parent_nodes[current];
+            if (parent_index == null_node)
+            {
+                break;
+            }
+            current = parent_index;
+        }
+        return func;
+    }
+
+    template <class Func>
+    Func for_each_child(FareClass fc, Func func) const
+    {
+        if (!is_present(fc))
+        {
+            throw std::invalid_argument("Node not present in the forest");
+        }
+        const index_t parent_index = symbol_to_index(fc);
+        for (size_t i = 0; i < m_node_presence.size(); ++i)
+        {
+            if (m_parent_nodes[i] == parent_index)
+            {
+                std::invoke(func, index_to_symbol(i));
+            }
+        }
+        return func;
+    }
+
+    template <class Func>
+    Func for_each_self_and_descendants(FareClass fc, Func func) const
+    {
+        if (!is_present(fc))
+        {
+            throw std::invalid_argument("Node not present in the forest");
+        }
+        std::vector<FareClass> current_level{ fc };
+        while (!current_level.empty())
+        {
+            std::vector<FareClass> next_level;
+            for (FareClass node : current_level)
+            {
+                std::invoke(func, node);
+                for_each_child(node, [&](FareClass child) { next_level.push_back(child); });
+            }
+            current_level = std::move(next_level);
+        }
+        return func;
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const Nesting& item)
+    {
+        bool first = true;
+        item.for_each_cabin(
+            [&](FareClass fc)
+            {
+                if (!first)
+                {
+                    os << " ";
+                }
+                first = false;
+                item.for_each_self_and_descendants(fc, [&](FareClass descendant) { os << descendant; });
+            });
+        return os;
+    }
+};
+
+struct PrettyPrinter
+{
+    const Nesting& m_nesting;
+
+    std::vector<Nesting::FareClass> get_cabins() const
+    {
+        std::vector<Nesting::FareClass> result;
+        m_nesting.for_each_cabin([&](Nesting::FareClass fc) { result.push_back(fc); });
+        return result;
+    }
+
+    std::vector<Nesting::FareClass> get_children(Nesting::FareClass fc) const
+    {
+        std::vector<Nesting::FareClass> result;
+        m_nesting.for_each_child(fc, [&](Nesting::FareClass child) { result.push_back(child); });
+        return result;
+    }
+
+    void print(std::ostream& os, Nesting::FareClass node, const std::string& prefix, bool is_last, bool is_root) const
+    {
+        os << prefix;
+        if (!is_root)
+        {
+            os << (is_last ? "+- " : "|- ");
+        }
+        os << node << '\n';
+
+        const std::vector<Nesting::FareClass> children = get_children(node);
+
+        const std::string child_prefix = prefix + (is_root ? "" : (is_last ? "   " : "|  "));
+        for (std::size_t i = 0; i < children.size(); ++i)
+        {
+            print(os, children[i], child_prefix, i + 1 == children.size(), false);
+        }
+    }
+
+    void print(std::ostream& os) const
+    {
+        std::vector<Nesting::FareClass> cabins = get_cabins();
+
+        for (std::size_t i = 0; i < cabins.size(); ++i)
+        {
+            print(os, cabins[i], "", i + 1 == cabins.size(), true);
+        }
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const PrettyPrinter& item)
+    {
+        item.print(os);
+        return os;
+    }
+};
+
+void run(const std::vector<std::string_view>& args)
+{
+    const Nesting nesting({ { 'E', { { 'F' }, { 'G', { { 'H' }, { 'I' }, { 'J' } } } } },
+                            { 'A', { { 'B' }, { 'C' }, { 'D' } } },
+                            { 'K', { { 'L' }, { 'M', { { 'O' }, { 'P', { { 'Q' } } } } }, { 'N' } } } });
+
+    std::cout << PrettyPrinter{ nesting } << std::endl;
+
+    nesting.for_each_cabin_indexed([](std::size_t index, Nesting::FareClass fc)
+                                   { std::cout << "Cabin index: " << index << " root: " << fc << '\n'; });
+
+    nesting.for_each_self_and_descendants(
+        'K',
+        [&](Nesting::FareClass fc)
+        {
+            const auto p = nesting.get_parent(fc);
+            std::cout << fc << " " << (p ? std::string(1, *p) : "null") << " " << nesting.get_tree_index(fc) << " [";
+            nesting.for_each_ancestors(fc, [&](Nesting::FareClass ancestor) { std::cout << ancestor; });
+            std::cout << "]\n";
         });
-    std::cout << "Total ";
-    return 0;
 }
 
 int main(int argc, char* argv[])
 {
     try
     {
-        return run({ argv, argv + argc });
+        run({ argv, argv + argc });
+        return 0;
     }
     catch (const std::exception& ex)
     {
