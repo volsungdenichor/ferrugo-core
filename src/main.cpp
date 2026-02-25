@@ -24,6 +24,7 @@ struct Nesting
     std::array<node_id_t, 26> m_parent_nodes;
     std::array<index_t, 26> m_tree_indices;
     std::array<node_id_t, 26> m_root_nodes;
+    std::array<std::vector<node_id_t>, 26> m_children;
     size_t m_tree_count = 0;
 
     struct Node
@@ -32,7 +33,7 @@ struct Nesting
         std::vector<Node> children;
     };
 
-    Nesting() : m_node_presence{}, m_parent_nodes{}, m_tree_indices{}, m_root_nodes{}
+    Nesting() : m_node_presence{}, m_parent_nodes{}, m_tree_indices{}, m_root_nodes{}, m_children{}
     {
         m_parent_nodes.fill(null_node);
         m_tree_indices.fill(null_index);
@@ -110,6 +111,7 @@ struct Nesting
         m_parent_nodes[child_index] = parent_index;
         m_root_nodes[child_index] = m_root_nodes[parent_index];
         m_tree_indices[child_index] = m_tree_indices[parent_index];
+        m_children[parent_index].push_back(child_index);
         return *this;
     }
 
@@ -217,12 +219,9 @@ struct Nesting
             throw std::invalid_argument("Node not present in the forest");
         }
         const index_t parent_index = symbol_to_index(fc);
-        for (size_t i = 0; i < m_node_presence.size(); ++i)
+        for (const node_id_t child_index : m_children[parent_index])
         {
-            if (m_parent_nodes[i] == parent_index)
-            {
-                std::invoke(func, index_to_symbol(i));
-            }
+            std::invoke(func, index_to_symbol(child_index));
         }
         return func;
     }
